@@ -1,0 +1,76 @@
+{
+  "project": "MyProject",
+  "branchName": "feature/my-feature",
+  "description": "Brief description of what this feature set accomplishes",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "First user story title",
+      "description": "As a [user type], I want [goal] so that [benefit].",
+      "acceptanceCriteria": [
+        "First acceptance criterion - specific, verifiable outcome",
+        "Second acceptance criterion",
+        "Build/typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "Follow project rules in .cursor/rules/ folder"
+    },
+    {
+      "id": "US-002",
+      "title": "Second user story title",
+      "description": "As a [user type], I want [goal] so that [benefit].",
+      "acceptanceCriteria": [
+        "Acceptance criterion for this story",
+        "Another criterion",
+        "Build/typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Follow project rules in .cursor/rules/ folder"
+    },
+    {
+      "id": "US-003",
+      "title": "Third user story title",
+      "description": "As a [user type], I want [goal] so that [benefit].",
+      "acceptanceCriteria": [
+        "Specific acceptance criterion",
+        "Build/typecheck passes",
+        "Verify in browser (for UI changes)"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Follow project rules in .cursor/rules/ folder"
+    },
+    {
+      "id": "US-REVIEW",
+      "title": "Detailed code review of implementation",
+      "description": "As a principal engineer, I need to perform a thorough code review of all changes made during this feature implementation.",
+      "acceptanceCriteria": [
+        "Review all new/modified files for code quality",
+        "Check for performance issues (unnecessary re-renders, missing memoization)",
+        "Verify accessibility and error handling",
+        "Ensure all tests pass",
+        "Document any technical debt or recommendations",
+        "Build/typecheck passes"
+      ],
+      "priority": 998,
+      "passes": false,
+      "notes": "Follow project rules in .cursor/rules/ folder"
+    },
+    {
+      "id": "US-IMPLEMENT-RECS",
+      "title": "Implement code review recommendations",
+      "description": "As a developer, I need to implement the recommendations and fixes identified during code review.",
+      "acceptanceCriteria": [
+        "Address all issues identified in code review",
+        "Re-verify all previous acceptance criteria still pass",
+        "Run full test suite - all tests pass",
+        "Build/typecheck passes"
+      ],
+      "priority": 999,
+      "passes": false,
+      "notes": "Follow project rules in .cursor/rules/ folder"
+    }
+  ]
+}

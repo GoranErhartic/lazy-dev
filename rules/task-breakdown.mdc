@@ -1,0 +1,93 @@
+---
+description: "Task decomposition protocol - breaking stories into atomic sub-tasks"
+alwaysApply: true
+---
+
+# Task Breakdown Protocol
+
+Before implementing any user story, decompose it into atomic sub-tasks. This ensures manageable scope and clear progress tracking.
+
+## Decomposition Process
+
+1. **Read** the story title, description, and acceptance criteria
+2. **Identify** the distinct changes needed
+3. **Order** by dependencies (what must come first)
+4. **Limit** to 2-15 sub-tasks per story
+5. **Document** the plan in progress.txt BEFORE coding
+
+## Sub-Task Characteristics
+
+Each sub-task must be:
+
+| Property | Description |
+|----------|-------------|
+| **Atomic** | Single logical change |
+| **Verifiable** | Can confirm it works independently |
+| **Small** | Completable in reasonable time |
+| **Clear** | Obvious when done |
+
+## Documentation Format
+
+Before implementing, append to progress.txt:
+
+```markdown
+## [Date] - [Story ID] Planning
+
+**Story:** [Title]
+
+**Sub-tasks:**
+1. [ ] Description of first sub-task
+2. [ ] Description of second sub-task
+3. [ ] Description of third sub-task
+
+**Dependencies:** [Any blockers or prerequisites]
+
+---
+```
+
+## Example Breakdowns
+
+### Database Change
+**Story:** Add priority field to tasks
+
+1. Add column to schema definition
+2. Create migration file
+3. Run migration
+4. Update types/interfaces
+5. Verify build
+
+### UI Feature
+**Story:** Add filter dropdown
+
+1. Create filter component
+2. Add state management for filter
+3. Connect to data fetching
+4. Style the component
+5. Verify in browser
+
+### API Endpoint
+**Story:** Create user profile endpoint
+
+1. Define route and controller
+2. Implement handler logic
+3. Add validation
+4. Write tests
+5. Verify with API client
+
+## Anti-Patterns
+
+- **Too vague:** "Implement the feature" - break it down further
+- **Too granular:** "Add import statement" - combine with related work
+- **No verification:** Sub-task without way to confirm completion
+- **Unordered:** Ignoring dependencies between sub-tasks
+
+## Progress Tracking
+
+As you complete sub-tasks, update your plan:
+
+```markdown
+1. [x] Add column to schema ✓
+2. [x] Create migration ✓
+3. [ ] Run migration (in progress)
+4. [ ] Update types
+```

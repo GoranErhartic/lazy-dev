@@ -1,0 +1,112 @@
+---
+description: "Agent loop protocol - iteration behavior, handoffs, state management"
+alwaysApply: true
+---
+
+# Agent Loop Protocol
+
+You are operating in an autonomous agent loop. Each iteration is independent - you must read state from files and write state back for the next iteration.
+
+## Iteration Lifecycle
+
+1. **Bootstrap** - Load PRD, progress log, discovered patterns, and rules
+2. **Select** - Pick highest priority incomplete story
+3. **Plan** - Break story into sub-tasks before coding
+4. **Execute** - Implement sub-tasks with verification
+5. **Commit** - Save changes with clear commit message
+6. **Handoff** - Update state files for next iteration
+
+## State Files
+
+| File | Purpose | Read | Write |
+|------|---------|------|-------|
+| `prd.json` | User stories and status | Start | After completion |
+| `progress.txt` | Running log and patterns | Start | During and after |
+| `rules/discovered/*.mdc` | Shared patterns (all features) | Start | When discovering |
+| `.cursor/rules/` | Project development rules | Start | Never |
+
+## Handoff Protocol
+
+Each iteration must leave clear context for the next agent:
+
+### In progress.txt
+- What was accomplished
+- What's next (if incomplete)
+- Gotchas or blockers encountered
+- Patterns discovered (quick notes)
+
+### In prd.json
+- Update `passes: true` when story complete
+- Add notes for context
+
+### In rules/discovered/
+When you discover a reusable pattern (used 3+ times, gotcha, convention):
+- Create `{feature}-{area}.mdc` file in `rules/discovered/`
+- Include `discoveredFrom` in frontmatter for traceability
+- Keep rules concise (1-2 lines per pattern)
+- See `pattern-discovery.mdc` for format details
+
+## Completion Detection
+
+The loop runner monitors the PRD state automatically and will stop when all stories have `passes: true`.
+
+When you complete a story:
+1. Update PRD with `passes: true`
+2. Update progress.txt with what you did
+3. End your response
+
+The loop will automatically detect completion and stop. You do NOT need to output any special signal.
+
+## Error Recovery
+
+If you encounter a blocker:
+
+1. **Use available tools first**:
+   - `mcp_open-websearch_search` - Search the web for information
+   - `mcp_context7_resolve-library-id` - Resolve library name to Context7 ID
+   - `mcp_context7_query-docs` - Query library documentation
+   - `codebase_search` - Find code patterns
+   - `grep` - Search for specific strings
+2. **Document it** in progress.txt with details
+3. **Add to story notes** in prd.json
+4. **End normally** - next iteration may have fresh approach
+
+### ⚠️ NEVER Ask for User Input
+
+You are an **autonomous agent**. The following are FORBIDDEN:
+
+- ❌ "Please provide the data..."
+- ❌ "Which option would you prefer?"
+- ❌ "I need clarification on..."
+- ❌ "🛑 BLOCKER: Cannot complete without user input"
+
+Instead:
+
+- ✅ Use `mcp_open-websearch_search` to search the web for information (like Google/Bing search)
+- ✅ Use `mcp_context7_query-docs` for library documentation
+- ✅ Make a reasonable decision and document it
+- ✅ If truly blocked after trying all tools, mark story as failed with notes
+
+**⚠️ NEVER use direct API calls (CoinGecko, CoinMarketCap, etc.) - ONLY use web search**
+
+All ambiguity should have been resolved during the PRD generation phase. If the PRD is unclear, make a reasonable interpretation and document your decision.
+
+## Final Story Commit Hygiene
+
+After completing the FINAL story (US-IMPLEMENT-RECS):
+1. Commit your code changes
+2. Update prd.json (set passes: true) and progress.txt
+3. Amend the commit to include state files:
+   ```bash
+   git add .cursor/lazy-dev/features/<feature>/prd.json .cursor/lazy-dev/features/<feature>/progress.txt
+   git commit --amend --no-edit
+   ```
+
+This ensures all changes from the final iteration are in a single atomic commit.
+
+## Scope Discipline
+
+- **One story per iteration** - Don't start multiple stories
+- **Complete before moving** - Finish current story before picking next
+- **Minimal changes** - Only modify what's needed for the story
+- **No speculative work** - Don't add features not in acceptance criteria

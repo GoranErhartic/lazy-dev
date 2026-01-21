@@ -1,0 +1,24 @@
+# Progress Log
+
+## Codebase Patterns
+
+<!-- 
+Consolidated patterns discovered during implementation.
+Add REUSABLE patterns here - things that apply across the codebase.
+Keep entries concise (1-2 lines each).
+
+Examples:
+- Use `sql<Type>` template for database aggregations
+- Always use `IF NOT EXISTS` for migrations
+- Export types from actions.ts for UI components
+- Components use forwardRef for ref forwarding
+-->
+
+---
+
+## Session Log
+
+<!-- 
+Each iteration appends its progress here.
+Do not modify previous entries.
+-->

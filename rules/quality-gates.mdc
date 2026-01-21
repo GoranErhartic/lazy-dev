@@ -1,0 +1,99 @@
+---
+description: "Quality gates and verification checklists - Definition of Done"
+alwaysApply: true
+---
+
+# Quality Gates
+
+All changes must pass these quality gates before marking a story as complete.
+
+## Required Checks
+
+| Gate | Requirement | Command (typical) |
+|------|-------------|-------------------|
+| **Build** | Compiles without errors | `npm run build` |
+| **Typecheck** | No type errors | `npm run typecheck` or `tsc --noEmit` |
+| **Lint** | No linting errors | `npm run lint` |
+| **Tests** | All tests pass | `npm test` |
+
+### Build Verification
+
+After completing any task, verify:
+- The project builds without errors
+- All existing tests pass
+- No new linter errors introduced
+
+Use the appropriate build commands for your project type (npm, pnpm, dotnet, cargo, etc.).
+
+> ⚠️ **Do NOT rely on IDE linter alone** - always verify with CLI before completing a story.
+
+## Definition of Done
+
+A story is complete when:
+
+- [ ] All acceptance criteria met
+- [ ] Build passes without errors or warnings
+- [ ] Type checking passes
+- [ ] Linting passes
+- [ ] Existing tests still pass
+- [ ] New tests added for non-trivial logic
+- [ ] No secrets or credentials in code
+- [ ] Changes committed with clear message
+- [ ] PRD updated with `passes: true`
+- [ ] Progress log updated
+
+## UI/Frontend Stories
+
+Additional requirements for stories that change user interface:
+
+- [ ] **Production build passes** (run your project's build command)
+- [ ] Verified in browser (not just build passing)
+- [ ] Works on target viewport sizes
+- [ ] No console errors
+- [ ] Accessible (keyboard navigation, screen reader)
+
+## Code Quality Standards
+
+### DO
+
+- Follow existing patterns in the codebase
+- Handle errors appropriately
+- Add meaningful comments for complex logic
+- Use descriptive variable and function names
+- Keep functions focused and small
+
+### DON'T
+
+- Commit broken code
+- Skip tests for "simple" changes
+- Leave TODO comments for critical issues
+- Disable linting rules without justification
+- Hardcode configuration values
+
+## Commit Message Format
+
+```
+<type>: <story-id> - <description>
+```
+
+### Types
+
+| Type | Use For |
+|------|---------|
+| `feat` | New feature |
+| `fix` | Bug fix |
+| `refactor` | Code restructuring |
+| `docs` | Documentation only |
+| `test` | Adding/updating tests |
+| `chore` | Maintenance tasks |
+
+## Failure Recovery
+
+If a quality gate fails:
+
+1. **Identify** - Which check failed and why
+2. **Fix** - Address the issue directly
+3. **Re-verify** - Run all checks again
+4. **Document** - Note any gotchas in progress.txt
+
+Do NOT bypass quality gates. If genuinely blocked, document in progress.txt and end the iteration.

@@ -1,0 +1,90 @@
+---
+description: "Pattern discovery and rule creation protocol"
+alwaysApply: true
+---
+
+# Pattern Discovery Protocol
+
+As you implement features, capture reusable patterns for future iterations. All patterns are stored centrally for cross-feature learning.
+
+## When to Create New Rules
+
+Create a new `.mdc` file when you discover:
+
+| Trigger | Example |
+|---------|---------|
+| **Recurring patterns** | Same approach used 3+ times |
+| **Gotchas** | Non-obvious requirements that caused issues |
+| **Conventions** | Naming, structure, or style specific to area |
+| **Dependencies** | Files that must change together |
+
+## Where to Create Rules
+
+**ALL discovered patterns go to:** `rules/discovered/`
+
+This ensures patterns are shared across all features and available to future iterations.
+
+## Rule File Format
+
+1. **Filename:** `{feature}-{area}.mdc`
+   - Include feature prefix for traceability
+   - Examples: `user-auth-jwt-patterns.mdc`, `dashboard-dnd-patterns.mdc`, `shared-api-conventions.mdc`
+
+2. **Frontmatter:**
+   ```yaml
+   ---
+   description: "Brief description of patterns"
+   globs: ["**/src/auth/**", "**/src/middleware/auth*"]
+   discoveredFrom: "feature-name"  # Track origin for context
+   ---
+   ```
+
+3. **Content:** Concise, actionable rules (1-2 lines per pattern)
+
+## Example Rule
+
+```yaml
+# rules/discovered/user-auth-jwt-patterns.mdc
+---
+description: "JWT authentication patterns discovered during user-auth feature"
+globs: ["**/src/auth/**"]
+discoveredFrom: "user-auth"
+---
+
+# JWT Patterns
+
+- Use bcrypt with cost factor 12 for password hashing
+- JWT access tokens expire in 15 minutes
+- Refresh tokens stored in httpOnly cookies
+- Always validate token signature before checking claims
+```
+
+## Quick Capture in progress.txt
+
+For patterns that don't warrant a full rule file, add to the **Codebase Patterns** section in `progress.txt`:
+
+```markdown
+## Codebase Patterns
+
+- **API responses**: Always use `{ data, error, meta }` shape
+- **Database**: Use `IF NOT EXISTS` for all CREATE statements
+- **Testing**: Mock external services at the adapter level
+```
+
+When a pattern in progress.txt is used 3+ times, promote it to `rules/discovered/`.
+
+## Reading Discovered Patterns
+
+**At the start of each iteration, read:**
+1. All `.mdc` files in `rules/discovered/`
+2. Patterns from progress.txt
+
+This ensures you benefit from patterns discovered by previous iterations.
+
+## Anti-Patterns
+
+- **Too verbose**: Rules should be scannable, not documentation
+- **Too specific**: One-time solutions don't need rules
+- **No globs**: Always scope rules to relevant files
+- **Duplicating docs**: Link to official docs instead of copying
+- **Feature isolation**: Don't store patterns in feature folders—use `rules/discovered/`

@@ -1,0 +1,7 @@
+# Shared Discovered Patterns (Cross-Feature Learning)
+#
+# ALL discovered patterns go here - no feature-specific folders
+# Use naming convention: {feature}-{area}.mdc
+# Include discoveredFrom in frontmatter for traceability
+#
+# Example: dashboard-dnd-patterns.mdc, user-auth-jwt-patterns.mdc

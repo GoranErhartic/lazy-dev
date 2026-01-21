@@ -1,0 +1,14 @@
+# Features directory
+# Each feature gets its own subfolder with isolated state:
+#
+# features/
+# └── my-feature/
+#     ├── prd.json           # User stories for this feature
+#     ├── progress.txt       # Progress log for this feature
+#     ├── discovered/        # Patterns specific to this feature
+#     └── archive/           # Previous runs (auto-created)
+#
+# To create a new feature:
+#   mkdir -p features/<feature-name>
+#   cp examples/prd.json features/<feature-name>/
+#   cp examples/progress.txt features/<feature-name>/
