@@ -1,6 +1,7 @@
 {
   "project": "MyProject",
-  "branchName": "feature/my-feature",
+  "jiraTaskId": "MED-123",
+  "branchName": "feature/MED-123_my-feature",
   "description": "Brief description of what this feature set accomplishes",
   "userStories": [
     {

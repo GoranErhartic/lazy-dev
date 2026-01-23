@@ -91,10 +91,57 @@ Instead:
 
 All ambiguity should have been resolved during the PRD generation phase. If the PRD is unclear, make a reasonable interpretation and document your decision.
 
+## Commit Message Conventions
+
+All commits MUST follow the conventional commit format:
+
+### Commit Types
+- **`feat:`** - New feature or enhancement
+- **`fix:`** - Bug fix
+- **`chore:`** - Maintenance, refactoring, or non-functional changes
+
+### Format
+
+**With Jira task (preferred - when `jiraTaskId` is present in prd.json):**
+```
+feat: (MED-123) Story title describing the change
+fix: (MED-123) Fix validation bug in form component
+chore: (MED-123) Code review and cleanup
+```
+
+**Without Jira task (fallback only):**
+```
+feat: US-001 - Story title describing the change
+fix: US-003 - Fix validation bug in form component
+chore: US-REVIEW - Code review and cleanup
+```
+
+### Choosing the Commit Type
+
+| Story Type | Commit Type |
+|------------|-------------|
+| New functionality, features | `feat:` |
+| Bug fixes, error corrections | `fix:` |
+| US-REVIEW, US-IMPLEMENT-RECS | `chore:` |
+| Refactoring, cleanup, docs | `chore:` |
+
+### Example Commits
+
+```bash
+# With Jira task MED-123 (preferred)
+git commit -m "feat: (MED-123) Add priority field to database"
+git commit -m "fix: (MED-123) Fix validation bug in form"
+git commit -m "chore: (MED-123) Code review and cleanup"
+
+# Without Jira (fallback - use story ID)
+git commit -m "feat: US-001 - Add priority field to database"
+git commit -m "chore: US-REVIEW - Code review and cleanup"
+```
+
 ## Final Story Commit Hygiene
 
 After completing the FINAL story (US-IMPLEMENT-RECS):
-1. Commit your code changes
+1. Commit your code changes (using the commit conventions above)
 2. Update prd.json (set passes: true) and progress.txt
 3. Amend the commit to include state files:
    ```bash

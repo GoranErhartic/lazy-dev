@@ -238,9 +238,19 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 2` to ac
 
 ## PHASE 4: Create PRD File
 
-1. **Determine Feature Location:**
+1. **Determine Feature Location and Jira Task:**
    * Ask the user for the feature name/identifier (for branch naming and folder).
-   * Default branch name format: `feature/<feature-name>` (kebab-case).
+   * **Check if user mentioned a Jira task number** (e.g., MED-123, PROJ-456) in their initial request or during clarification.
+   * If Jira task was mentioned, capture it for branch naming and commit messages.
+   
+   **Branch name format:**
+   - **Without Jira:** `feature/<feature-name>` or `fix/<feature-name>` (kebab-case)
+   - **With Jira:** `feature/<JIRA-ID>_<feature-name>` or `fix/<JIRA-ID>_<feature-name>`
+   
+   **Examples:**
+   - Without Jira: `feature/task-priority`
+   - With Jira MED-123: `feature/MED-123_task-priority`
+   - Bug fix with Jira: `fix/MED-456_login-validation`
 
 2. **Create Feature Directory:**
    * Create folder: `.cursor/lazy-dev/features/<feature-name>/`
@@ -251,11 +261,13 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 2` to ac
 
 3. **Generate `prd.json`:**
    * Use the following schema:
+   * **Include `jiraTaskId` field if the user provided a Jira task number**
 
    ```json
    {
      "project": "[Project name from context or user input]",
-     "branchName": "feature/[feature-name-kebab-case]",
+     "jiraTaskId": "[JIRA-123 if provided, otherwise omit this field]",
+     "branchName": "feature/[JIRA-123_]feature-name-kebab-case",
      "description": "[One-line summary of what this feature accomplishes]",
      "userStories": [
        {
@@ -711,6 +723,7 @@ Before finalizing the PRD, verify:
 - [ ] **US-REVIEW included with priority 998** (code review step)
 - [ ] **US-IMPLEMENT-RECS included with priority 999** (implement recommendations)
 - [ ] **Each story includes note:** "Follow project rules in .cursor/rules/ folder"
+- [ ] **If Jira task was mentioned:** `jiraTaskId` field is set and branch name includes it
 - [ ] `prd.json` is valid JSON
 - [ ] `progress.txt` template created
 

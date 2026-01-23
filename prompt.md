@@ -171,7 +171,7 @@ Read these rules to understand the full protocol.
 5. **Plan** → Break into 2-15 sub-tasks, document in progress.txt
 6. **Implement** → Complete sub-tasks following project rules, verify each one
 7. **Verify** → Build, typecheck, lint, test (all must pass)
-8. **Commit** → `git add . && git commit -m "feat: US-001 - Story title"` (⚠️ NEVER push!)
+8. **Commit** → Use conventional commit format (see below) (⚠️ NEVER push!)
 9. **Update** → Set `passes: true` in PRD, log to progress.txt, create patterns in `rules/discovered/`
 10. **STOP** → End your response. Do NOT continue to the next story.
 
@@ -194,6 +194,31 @@ The loop runner monitors the PRD state automatically and will stop when all stor
 2. Feature's `progress.txt` — Log what you did and learned
 3. **`rules/discovered/`** — Create `.mdc` files for reusable patterns (use `{feature}-{area}.mdc` naming)
 
+### Commit Message Conventions
+
+All commits MUST follow the conventional commit format:
+
+| Commit Type | When to Use |
+|-------------|-------------|
+| `feat:` | New features, enhancements |
+| `fix:` | Bug fixes |
+| `chore:` | Reviews, refactoring, cleanup |
+
+**Format (check prd.json for `jiraTaskId`):**
+- With Jira (preferred): `feat: (MED-123) Story title`
+- Without Jira (fallback): `feat: US-001 - Story title`
+
+**Examples:**
+```bash
+# With Jira task (preferred - use Jira ID only)
+git commit -m "feat: (MED-123) Add priority field to database"
+git commit -m "chore: (MED-123) Code review and cleanup"
+
+# Without Jira task (fallback - use story ID)
+git commit -m "feat: US-001 - Add priority field to database"
+git commit -m "chore: US-REVIEW - Code review and cleanup"
+```
+
 ### Key Principles
 
 - **ONE story per iteration — NO EXCEPTIONS** — Complete exactly one user story, then STOP. This applies to ALL stories including review stories (US-REVIEW, US-IMPLEMENT-RECS, etc.). Review stories are just as important as implementation stories and deserve dedicated iterations.
@@ -201,6 +226,7 @@ The loop runner monitors the PRD state automatically and will stop when all stor
 - **Keep CI green** — Never commit broken code
 - **Leave context** — Your progress.txt entries help the next agent
 - **NEVER push** — Only commit locally; pushing is strictly blocked
+- **Use conventional commits** — Always use `feat:`, `fix:`, or `chore:` prefix
 
 ### ⚠️ CRITICAL: Review Stories Are First-Class Stories
 
