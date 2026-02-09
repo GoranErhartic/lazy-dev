@@ -822,6 +822,41 @@ verify_all_stories_complete() {
     return 0  # All stories complete
 }
 
+# Get the next story ID (highest priority with passes: false)
+# Usage: next_story=$(get_next_story_id "$PRD_FILE")
+get_next_story_id() {
+    local prd_file="$1"
+    
+    if [ ! -f "$prd_file" ]; then
+        echo ""
+        return
+    fi
+    
+    jq -r '[.userStories[] | select(.passes == false)] | sort_by(.priority) | .[0].id // ""' "$prd_file" 2>/dev/null
+}
+
+# Get the appropriate model for a specific story ID
+# Usage: model=$(get_model_for_story "$story_id")
+# Returns:
+#   - gpt-5.2-codex for US-REVIEW (first code review)
+#   - gemini-3-pro for US-REVIEW-2 (second code review)
+#   - opus-4.5 for all other stories (implementation)
+get_model_for_story() {
+    local story_id="$1"
+    
+    case "$story_id" in
+        "US-REVIEW")
+            echo "gpt-5.2-codex"
+            ;;
+        "US-REVIEW-2")
+            echo "gemini-3-pro"
+            ;;
+        *)
+            echo "opus-4.5"
+            ;;
+    esac
+}
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # GIT SAFETY: BLOCK ALL PUSH OPERATIONS
@@ -1265,6 +1300,20 @@ $PROMPT_CONTENT"
     # that makes the parsed output unreadable
     # --workspace points to project root so agent can access the full codebase
     CURSOR_ARGS+=("-p" "--force" "--output-format" "stream-json" "--workspace" "$PROJECT_ROOT")
+
+    # Select appropriate model based on the next story to be processed
+    # - US-REVIEW: GPT 5.2 Codex (first code review)
+    # - US-REVIEW-2: Gemini 3 Pro (second code review)
+    # - All other stories: Opus 4.5 (implementation)
+    local next_story_id
+    next_story_id=$(get_next_story_id "$PRD_FILE")
+    local selected_model
+    selected_model=$(get_model_for_story "$next_story_id")
+    
+    if [ -n "$selected_model" ]; then
+        CURSOR_ARGS+=("--model" "$selected_model")
+        log_info "Story: ${BOLD}${next_story_id}${NC} → Model: ${BOLD}${selected_model}${NC}"
+    fi
 
     local full_cmd="$CURSOR_CMD ${CURSOR_ARGS[*]} <prompt>"
     

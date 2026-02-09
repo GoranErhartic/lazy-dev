@@ -194,15 +194,25 @@ While the output format is `prd.json`, mentally structure the feature as:
    - **For research/data stories:** Include specific instructions to use `mcp_open-websearch_search` tool and which sources to use
 
 ### Story ID Convention:
-- Use `US-001`, `US-002`, etc. for sequential numbering.
-- Stories should be independent enough to be worked on in separate agent iterations.
+
+**When Jira task is provided (e.g., MED-523):**
+- Use `{JIRA-ID}-001`, `{JIRA-ID}-002`, etc. (e.g., `MED-523-001`, `MED-523-002`)
+- This links stories directly to the Jira ticket for traceability
+
+**When no Jira task is provided:**
+- Use `US-001`, `US-002`, etc. for sequential numbering
+
+**Important:** Story IDs are for internal PRD tracking only. Git commits should use the Jira task ID (e.g., `feat(MED-523): Add priority field`), NOT the granular story IDs, since PRD files are not committed to VCS.
+
+Stories should be independent enough to be worked on in separate agent iterations.
 
 ### Priority Guidelines:
 - Priority 1: Core functionality, must-have, no dependencies
 - Priority 2: Important features that depend on Priority 1
 - Priority 3: Nice-to-have, polish, or optional enhancements
-- Priority 998: Auto-generated code review step (US-REVIEW)
-- Priority 999: Auto-generated implement recommendations step (US-IMPLEMENT-RECS, always last)
+- Priority 997: Auto-generated first code review step (US-REVIEW, GPT 5.2 Codex)
+- Priority 998: Auto-generated second code review step (US-REVIEW-2, Gemini 3 Pro)
+- Priority 999: Auto-generated implement recommendations step (US-IMPLEMENT-RECS, Opus 4.5, always last)
 
 ### ⚠️ CRITICAL: Unique Priorities Required
 
@@ -227,12 +237,21 @@ While the output format is `prd.json`, mentally structure the feature as:
 ```
 
 ### Auto-Generated Review Steps:
-Every PRD automatically includes two final user stories for quality assurance. These ensure proper code review and implementation of fixes **at the end of every feature**:
+Every PRD automatically includes three final user stories for quality assurance. These ensure proper dual-model code review and implementation of fixes **at the end of every feature**:
 
-1. **US-REVIEW** (Priority 998): Detailed code review of implementation
-2. **US-IMPLEMENT-RECS** (Priority 999): Implement code review recommendations
+**With Jira (e.g., MED-523):**
+1. **MED-523-REVIEW** (Priority 997): First code review using GPT 5.2 Codex → outputs to `review-gpt.md`
+2. **MED-523-REVIEW-2** (Priority 998): Second code review using Gemini 3 Pro → outputs to `review-gemini.md`
+3. **MED-523-IMPL-RECS** (Priority 999): Implement recommendations from both reviews using Opus 4.5
 
-The lazy-dev agent loop calculates iterations as: `(user story count) + 2` to account for these review steps.
+**Without Jira:**
+1. **US-REVIEW** (Priority 997): First code review
+2. **US-REVIEW-2** (Priority 998): Second code review
+3. **US-IMPLEMENT-RECS** (Priority 999): Implement recommendations
+
+Each review agent outputs findings to an independent file in the feature directory. The implementation agent reads both files to synthesize and implement the combined recommendations.
+
+The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to account for these review steps.
 
 ---
 
@@ -252,16 +271,30 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 2` to ac
    - With Jira MED-123: `feature/MED-123_task-priority`
    - Bug fix with Jira: `fix/MED-456_login-validation`
 
-2. **Create Feature Directory:**
+2. **Create Feature Branch:**
+   * **CRITICAL: Create the git branch BEFORE starting any work**
+   * First, ensure you're on the latest main/master branch:
+     ```bash
+     git checkout main && git pull origin main
+     ```
+   * Then create and switch to the feature branch:
+     ```bash
+     git checkout -b feature/<feature-name>
+     # Or with Jira: git checkout -b feature/<JIRA-ID>_<feature-name>
+     ```
+   * This ensures all work is isolated on a dedicated branch.
+
+3. **Create Feature Directory:**
    * Create folder: `.cursor/lazy-dev/features/<feature-name>/`
    * This folder will contain:
      - `prd.json` - The PRD file
      - `progress.txt` - Will be created during implementation
      - `discovered/` - Will store feature-specific patterns (optional)
 
-3. **Generate `prd.json`:**
+4. **Generate `prd.json`:**
    * Use the following schema:
    * **Include `jiraTaskId` field if the user provided a Jira task number**
+   * **Story IDs use Jira task ID as prefix** when available (e.g., `MED-523-001`)
 
    ```json
    {
@@ -271,7 +304,7 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 2` to ac
      "description": "[One-line summary of what this feature accomplishes]",
      "userStories": [
        {
-         "id": "US-001",
+         "id": "[JIRA-123-001 or US-001 if no Jira]",
          "title": "[First story - highest priority]",
          "description": "As a [user type], I want [goal] so that [benefit].",
          "acceptanceCriteria": [
@@ -281,10 +314,10 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 2` to ac
          ],
          "priority": 1,
          "passes": false,
-         "notes": "Follow project rules in .cursor/rules/ folder"
+         "notes": "Follow project rules in ~/.cursor/rules/ folder"
        },
        {
-         "id": "US-002",
+         "id": "[JIRA-123-002 or US-002 if no Jira]",
          "title": "[Second story - unique priority]",
          "description": "As a [user type], I want [goal] so that [benefit].",
          "acceptanceCriteria": [
@@ -293,46 +326,65 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 2` to ac
          ],
          "priority": 2,
          "passes": false,
-         "notes": "Follow project rules in .cursor/rules/ folder"
+         "notes": "Follow project rules in ~/.cursor/rules/ folder"
        },
-      {
-        "id": "US-REVIEW",
-        "title": "Detailed code review of implementation",
-        "description": "As a principal engineer, I need to perform a thorough code review of all changes made during this feature implementation.",
+       {
+        "id": "[JIRA-123-REVIEW or US-REVIEW if no Jira]",
+        "title": "Code review - GPT 5.2 Codex",
+        "description": "As a principal engineer, I need to perform a thorough code review of all changes made during this feature implementation using GPT 5.2 Codex.",
         "acceptanceCriteria": [
           "Review all new/modified files for code quality",
           "Check for performance issues (N+1 queries, memory leaks, etc.)",
           "Verify security (input validation, XSS, SQL injection)",
           "Ensure proper error handling throughout",
           "Confirm test coverage is adequate",
-          "Document any technical debt introduced",
+          "Document all findings and recommendations in review-gpt.md file in the feature directory",
+          "Build/typecheck passes"
+        ],
+        "priority": 997,
+        "passes": false,
+        "notes": "Auto-generated review step (GPT 5.2 Codex). Output findings to .cursor/lazy-dev/features/{feature}/review-gpt.md"
+      },
+      {
+        "id": "[JIRA-123-REVIEW-2 or US-REVIEW-2 if no Jira]",
+        "title": "Code review - Gemini 3 Pro",
+        "description": "As a principal engineer, I need to perform an independent second code review of all changes using Gemini 3 Pro.",
+        "acceptanceCriteria": [
+          "Review all new/modified files for code quality (independent of first review)",
+          "Check for security vulnerabilities and edge cases",
+          "Verify error handling and resilience patterns",
+          "Look for architectural improvements and best practices",
+          "Document all findings and recommendations in review-gemini.md file in the feature directory",
           "Build/typecheck passes"
         ],
         "priority": 998,
         "passes": false,
-        "notes": "Auto-generated review step. Follow project rules in .cursor/rules/ folder."
+        "notes": "Auto-generated review step (Gemini 3 Pro). Output findings to .cursor/lazy-dev/features/{feature}/review-gemini.md"
       },
       {
-        "id": "US-IMPLEMENT-RECS",
+        "id": "[JIRA-123-IMPL-RECS or US-IMPLEMENT-RECS if no Jira]",
         "title": "Implement code review recommendations",
-        "description": "As a developer, I need to implement the recommendations and fixes identified during code review.",
+        "description": "As a developer, I need to implement the recommendations and fixes identified during both code reviews.",
         "acceptanceCriteria": [
-          "Address all issues identified in code review",
+          "Read review-gpt.md for GPT 5.2 Codex review findings",
+          "Read review-gemini.md for Gemini 3 Pro review findings",
+          "Synthesize and prioritize recommendations from both reviews",
+          "Address all critical and high-priority issues from both reviews",
           "Re-verify all previous acceptance criteria still pass",
           "Run full test suite - all tests pass",
           "Build/typecheck passes"
         ],
         "priority": 999,
         "passes": false,
-        "notes": "Auto-generated implementation step - runs after review. Follow project rules in .cursor/rules/ folder."
+        "notes": "Auto-generated implementation step (Opus 4.5). Read both review-gpt.md and review-gemini.md from feature directory."
       }
     ]
   }
   ```
    
-   **Note:** The `US-REVIEW` and `US-IMPLEMENT-RECS` stories are **required** in every PRD. Add them with priorities 998 and 999 respectively to ensure they always run last. Each story should include a note to "Follow project rules in .cursor/rules/ folder".
+   **Note:** The `US-REVIEW`, `US-REVIEW-2`, and `US-IMPLEMENT-RECS` stories are **required** in every PRD. Add them with priorities 997, 998, and 999 respectively to ensure they always run last. Each review story outputs findings to its own file (`review-gpt.md` or `review-gemini.md`) for independent analysis, and the implementation story reads both files to synthesize recommendations.
 
-4. **Generate Initial `progress.txt`:**
+5. **Generate Initial `progress.txt`:**
    * Create an initial progress file with the template:
 
    ```markdown
@@ -621,14 +673,17 @@ Does this accurately capture what you want? If yes, I'll proceed with generating
 
 ### Generated PRD (`prd.json`):
 
+**Example WITH Jira task (TASK-456):**
+
 ```json
 {
   "project": "TaskApp",
-  "branchName": "feature/task-priority",
+  "jiraTaskId": "TASK-456",
+  "branchName": "feature/TASK-456_task-priority",
   "description": "Add priority levels (high/medium/low) to tasks with visual indicators and filtering capabilities",
   "userStories": [
     {
-      "id": "US-001",
+      "id": "TASK-456-001",
       "title": "Add priority field to database",
       "description": "As a developer, I need to store task priority so it persists across sessions.",
       "acceptanceCriteria": [
@@ -638,10 +693,10 @@ Does this accurately capture what you want? If yes, I'll proceed with generating
       ],
       "priority": 1,
       "passes": false,
-      "notes": "Follow project rules in .cursor/rules/ folder"
+      "notes": "Follow project rules in ~/.cursor/rules/ folder"
     },
     {
-      "id": "US-002",
+      "id": "TASK-456-002",
       "title": "Display priority indicator on task cards",
       "description": "As a user, I want to see task priority at a glance so I know what needs attention first.",
       "acceptanceCriteria": [
@@ -655,7 +710,7 @@ Does this accurately capture what you want? If yes, I'll proceed with generating
       "notes": "UI story - requires browser verification"
     },
     {
-      "id": "US-003",
+      "id": "TASK-456-003",
       "title": "Add priority selector to task edit",
       "description": "As a user, I want to change a task's priority when editing it.",
       "acceptanceCriteria": [
@@ -667,10 +722,10 @@ Does this accurately capture what you want? If yes, I'll proceed with generating
       ],
       "priority": 3,
       "passes": false,
-      "notes": "Follow project rules in .cursor/rules/ folder"
+      "notes": "Follow project rules in ~/.cursor/rules/ folder"
     },
     {
-      "id": "US-004",
+      "id": "TASK-456-004",
       "title": "Filter and sort tasks by priority",
       "description": "As a user, I want to filter the task list to see only high-priority items when I'm focused.",
       "acceptanceCriteria": [
@@ -682,11 +737,13 @@ Does this accurately capture what you want? If yes, I'll proceed with generating
       ],
       "priority": 4,
       "passes": false,
-      "notes": "Non-goals: No priority-based notifications, no automatic priority assignment. Follow project rules in .cursor/rules/ folder"
+      "notes": "Non-goals: No priority-based notifications, no automatic priority assignment. Follow project rules in ~/.cursor/rules/ folder"
     }
   ]
 }
 ```
+
+**Note on Git commits:** When committing, use the Jira task ID only (e.g., `feat(TASK-456): Add priority field`), NOT the granular story IDs. The PRD with story IDs stays local and is not committed to VCS.
 
 ---
 
@@ -720,12 +777,21 @@ Before finalizing the PRD, verify:
 - [ ] Priorities are unique and sequential (no duplicates: 1, 2, 3...)
 - [ ] Story IDs are unique and sequential (US-001, US-002...)
 - [ ] Non-goals/out-of-scope items documented in notes
-- [ ] **US-REVIEW included with priority 998** (code review step)
-- [ ] **US-IMPLEMENT-RECS included with priority 999** (implement recommendations)
-- [ ] **Each story includes note:** "Follow project rules in .cursor/rules/ folder"
+- [ ] **US-REVIEW included with priority 997** (first code review - GPT 5.2 Codex, outputs to review-gpt.md)
+- [ ] **US-REVIEW-2 included with priority 998** (second code review - Gemini 3 Pro, outputs to review-gemini.md)
+- [ ] **US-IMPLEMENT-RECS included with priority 999** (implement recommendations from both reviews)
+- [ ] **Each story includes note:** "Follow project rules in ~/.cursor/rules/ folder"
 - [ ] **If Jira task was mentioned:** `jiraTaskId` field is set and branch name includes it
+- [ ] **If Jira task was mentioned:** Story IDs use Jira prefix (e.g., `MED-523-001`, `MED-523-002`)
 - [ ] `prd.json` is valid JSON
 - [ ] `progress.txt` template created
+
+**Git Branch:**
+- [ ] Feature branch created: `git checkout -b feature/<feature-name>` (or with Jira: `feature/<JIRA-ID>_<feature-name>`)
+
+**Git Commits (reminder for agent):**
+- [ ] Commits use Jira task ID only: `feat(JIRA-123): Description`
+- [ ] Commits do NOT use granular story IDs (JIRA-123-001) - PRD stays local, not in VCS
 
 ---
 

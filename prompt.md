@@ -221,7 +221,7 @@ git commit -m "chore: US-REVIEW - Code review and cleanup"
 
 ### Key Principles
 
-- **ONE story per iteration — NO EXCEPTIONS** — Complete exactly one user story, then STOP. This applies to ALL stories including review stories (US-REVIEW, US-IMPLEMENT-RECS, etc.). Review stories are just as important as implementation stories and deserve dedicated iterations.
+- **ONE story per iteration — NO EXCEPTIONS** — Complete exactly one user story, then STOP. This applies to ALL stories including review stories (US-REVIEW, US-REVIEW-2, US-IMPLEMENT-RECS). Review stories are just as important as implementation stories and deserve dedicated iterations.
 - **Break down first** — Document sub-tasks before coding
 - **Keep CI green** — Never commit broken code
 - **Leave context** — Your progress.txt entries help the next agent
@@ -230,7 +230,7 @@ git commit -m "chore: US-REVIEW - Code review and cleanup"
 
 ### ⚠️ CRITICAL: Review Stories Are First-Class Stories
 
-**US-REVIEW** and **US-IMPLEMENT-RECS** (or similar review/fix stories) are NOT afterthoughts. They are full user stories that:
+**US-REVIEW**, **US-REVIEW-2**, and **US-IMPLEMENT-RECS** are NOT afterthoughts. They are full user stories that:
 - Require their own dedicated iteration
 - Must NOT be bundled with the previous implementation story
 - Deserve full attention for thorough code review
@@ -239,10 +239,94 @@ git commit -m "chore: US-REVIEW - Code review and cleanup"
 **Example of CORRECT behavior:**
 - Iteration 5: Complete US-005 → commit → STOP
 - Iteration 6: Complete US-REVIEW → commit → STOP  
-- Iteration 7: Complete US-IMPLEMENT-RECS → commit → STOP
+- Iteration 7: Complete US-REVIEW-2 → commit → STOP
+- Iteration 8: Complete US-IMPLEMENT-RECS → commit → STOP
 
 **Example of WRONG behavior:**
-- Iteration 5: Complete US-005 + US-REVIEW + US-IMPLEMENT-RECS ❌ (violates one-story rule)
+- Iteration 5: Complete US-005 + US-REVIEW + US-REVIEW-2 + US-IMPLEMENT-RECS ❌ (violates one-story rule)
+
+---
+
+## 🔍 Dual-Model Code Review System
+
+The lazy-dev loop uses **different AI models** for different story types to maximize code quality:
+
+| Story ID | Model | Purpose |
+|----------|-------|---------|
+| US-001 to US-NNN | Opus 4.5 | Implementation stories |
+| US-REVIEW | GPT 5.2 Codex | First code review |
+| US-REVIEW-2 | Gemini 3 Pro | Second code review |
+| US-IMPLEMENT-RECS | Opus 4.5 | Implement review findings |
+
+### Code Review Output Files
+
+Each review story MUST output findings to an independent file:
+
+| Story | Output File | Purpose |
+|-------|-------------|---------|
+| US-REVIEW | `.cursor/lazy-dev/features/{feature}/review-gpt.md` | GPT 5.2 Codex findings |
+| US-REVIEW-2 | `.cursor/lazy-dev/features/{feature}/review-gemini.md` | Gemini 3 Pro findings |
+
+### US-REVIEW (GPT 5.2 Codex) Instructions
+
+When processing US-REVIEW:
+1. Perform a comprehensive code review of all implementation changes
+2. Check for performance issues, security vulnerabilities, and code quality
+3. **Create `review-gpt.md`** in the feature directory with structured findings:
+   ```markdown
+   # Code Review Findings - GPT 5.2 Codex
+   
+   ## Critical Issues
+   - [List critical issues that must be fixed]
+   
+   ## High Priority
+   - [List high-priority improvements]
+   
+   ## Medium Priority
+   - [List medium-priority suggestions]
+   
+   ## Low Priority / Nice-to-Have
+   - [List optional improvements]
+   
+   ## Summary
+   [Brief summary of overall code quality]
+   ```
+
+### US-REVIEW-2 (Gemini 3 Pro) Instructions
+
+When processing US-REVIEW-2:
+1. Perform an **independent** code review (do NOT read review-gpt.md)
+2. Focus on different aspects: security vulnerabilities, edge cases, architectural improvements
+3. **Create `review-gemini.md`** in the feature directory with structured findings:
+   ```markdown
+   # Code Review Findings - Gemini 3 Pro
+   
+   ## Critical Issues
+   - [List critical issues that must be fixed]
+   
+   ## High Priority
+   - [List high-priority improvements]
+   
+   ## Medium Priority
+   - [List medium-priority suggestions]
+   
+   ## Low Priority / Nice-to-Have
+   - [List optional improvements]
+   
+   ## Summary
+   [Brief summary of overall code quality]
+   ```
+
+### US-IMPLEMENT-RECS (Opus 4.5) Instructions
+
+When processing US-IMPLEMENT-RECS:
+1. **Read both review files:**
+   - `.cursor/lazy-dev/features/{feature}/review-gpt.md`
+   - `.cursor/lazy-dev/features/{feature}/review-gemini.md`
+2. **Synthesize findings** from both reviews
+3. **Prioritize** based on severity (Critical → High → Medium → Low)
+4. **Implement** all critical and high-priority fixes
+5. **Document** which recommendations were implemented and any that were deferred
 
 ### Commit Hygiene: Amend for Uncommitted State Files
 
@@ -263,7 +347,7 @@ This ensures all changes from the final iteration are in a single atomic commit.
 When you finish a story and set `passes: true`:
 1. **STOP immediately** — Do not look at the next story
 2. **Do not start** the review story after the last implementation story
-3. **Do not bundle** US-REVIEW or US-IMPLEMENT-RECS with any other story
+3. **Do not bundle** US-REVIEW, US-REVIEW-2, or US-IMPLEMENT-RECS with any other story
 4. **End your response** — The loop will call you again for the next story
 
-The iteration boundary is SACRED. Each story gets its own iteration, its own commit, and its own dedicated attention. This is especially critical for review stories which ensure code quality.
+The iteration boundary is SACRED. Each story gets its own iteration, its own commit, and its own dedicated attention. This is especially critical for review stories which ensure code quality through dual-model analysis.

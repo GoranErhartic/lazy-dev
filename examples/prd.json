@@ -45,33 +45,52 @@
     },
     {
       "id": "US-REVIEW",
-      "title": "Detailed code review of implementation",
-      "description": "As a principal engineer, I need to perform a thorough code review of all changes made during this feature implementation.",
+      "title": "Code review - GPT 5.2 Codex",
+      "description": "As a principal engineer, I need to perform a thorough code review of all changes made during this feature implementation using GPT 5.2 Codex.",
       "acceptanceCriteria": [
         "Review all new/modified files for code quality",
         "Check for performance issues (unnecessary re-renders, missing memoization)",
         "Verify accessibility and error handling",
         "Ensure all tests pass",
-        "Document any technical debt or recommendations",
+        "Document all findings and recommendations in review-gpt.md file in the feature directory",
+        "Build/typecheck passes"
+      ],
+      "priority": 997,
+      "passes": false,
+      "notes": "Output findings to .cursor/lazy-dev/features/{feature}/review-gpt.md - this file will be read by US-IMPLEMENT-RECS"
+    },
+    {
+      "id": "US-REVIEW-2",
+      "title": "Code review - Gemini 3 Pro",
+      "description": "As a principal engineer, I need to perform an independent second code review of all changes made during this feature implementation using Gemini 3 Pro.",
+      "acceptanceCriteria": [
+        "Review all new/modified files for code quality (independent of first review)",
+        "Check for security vulnerabilities and edge cases",
+        "Verify error handling and resilience patterns",
+        "Look for architectural improvements and best practices",
+        "Document all findings and recommendations in review-gemini.md file in the feature directory",
         "Build/typecheck passes"
       ],
       "priority": 998,
       "passes": false,
-      "notes": "Follow project rules in .cursor/rules/ folder"
+      "notes": "Output findings to .cursor/lazy-dev/features/{feature}/review-gemini.md - this file will be read by US-IMPLEMENT-RECS"
     },
     {
       "id": "US-IMPLEMENT-RECS",
       "title": "Implement code review recommendations",
-      "description": "As a developer, I need to implement the recommendations and fixes identified during code review.",
+      "description": "As a developer, I need to implement the recommendations and fixes identified during both code reviews.",
       "acceptanceCriteria": [
-        "Address all issues identified in code review",
+        "Read review-gpt.md for GPT 5.2 Codex review findings",
+        "Read review-gemini.md for Gemini 3 Pro review findings",
+        "Synthesize and prioritize recommendations from both reviews",
+        "Address all critical and high-priority issues from both reviews",
         "Re-verify all previous acceptance criteria still pass",
         "Run full test suite - all tests pass",
         "Build/typecheck passes"
       ],
       "priority": 999,
       "passes": false,
-      "notes": "Follow project rules in .cursor/rules/ folder"
+      "notes": "Read both .cursor/lazy-dev/features/{feature}/review-gpt.md and review-gemini.md to gather all recommendations"
     }
   ]
 }
