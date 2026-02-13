@@ -838,21 +838,21 @@ get_next_story_id() {
 # Get the appropriate model for a specific story ID
 # Usage: model=$(get_model_for_story "$story_id")
 # Returns:
-#   - gpt-5.2-codex for US-REVIEW (first code review)
+#   - gpt-5.3-codex for US-REVIEW (first code review)
 #   - gemini-3-pro for US-REVIEW-2 (second code review)
-#   - opus-4.5 for all other stories (implementation)
+#   - opus-4.6 for all other stories (implementation)
 get_model_for_story() {
     local story_id="$1"
     
     case "$story_id" in
         "US-REVIEW")
-            echo "gpt-5.2-codex"
+            echo "gpt-5.3-codex"
             ;;
         "US-REVIEW-2")
             echo "gemini-3-pro"
             ;;
         *)
-            echo "opus-4.5"
+            echo "opus-4.6"
             ;;
     esac
 }
@@ -1302,9 +1302,9 @@ $PROMPT_CONTENT"
     CURSOR_ARGS+=("-p" "--force" "--output-format" "stream-json" "--workspace" "$PROJECT_ROOT")
 
     # Select appropriate model based on the next story to be processed
-    # - US-REVIEW: GPT 5.2 Codex (first code review)
+    # - US-REVIEW: GPT 5.3 Codex (first code review)
     # - US-REVIEW-2: Gemini 3 Pro (second code review)
-    # - All other stories: Opus 4.5 (implementation)
+    # - All other stories: Opus 4.6 (implementation)
     local next_story_id
     next_story_id=$(get_next_story_id "$PRD_FILE")
     local selected_model

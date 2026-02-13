@@ -45,8 +45,8 @@
     },
     {
       "id": "US-REVIEW",
-      "title": "Code review - GPT 5.2 Codex",
-      "description": "As a principal engineer, I need to perform a thorough code review of all changes made during this feature implementation using GPT 5.2 Codex.",
+      "title": "Code review - GPT 5.3 Codex",
+      "description": "As a principal engineer, I need to perform a thorough code review of all changes made during this feature implementation using GPT 5.3 Codex.",
       "acceptanceCriteria": [
         "Review all new/modified files for code quality",
         "Check for performance issues (unnecessary re-renders, missing memoization)",
@@ -80,7 +80,7 @@
       "title": "Implement code review recommendations",
       "description": "As a developer, I need to implement the recommendations and fixes identified during both code reviews.",
       "acceptanceCriteria": [
-        "Read review-gpt.md for GPT 5.2 Codex review findings",
+        "Read review-gpt.md for GPT 5.3 Codex review findings",
         "Read review-gemini.md for Gemini 3 Pro review findings",
         "Synthesize and prioritize recommendations from both reviews",
         "Address all critical and high-priority issues from both reviews",

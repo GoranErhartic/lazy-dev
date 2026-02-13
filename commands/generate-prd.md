@@ -210,9 +210,9 @@ Stories should be independent enough to be worked on in separate agent iteration
 - Priority 1: Core functionality, must-have, no dependencies
 - Priority 2: Important features that depend on Priority 1
 - Priority 3: Nice-to-have, polish, or optional enhancements
-- Priority 997: Auto-generated first code review step (US-REVIEW, GPT 5.2 Codex)
+- Priority 997: Auto-generated first code review step (US-REVIEW, GPT 5.3 Codex)
 - Priority 998: Auto-generated second code review step (US-REVIEW-2, Gemini 3 Pro)
-- Priority 999: Auto-generated implement recommendations step (US-IMPLEMENT-RECS, Opus 4.5, always last)
+- Priority 999: Auto-generated implement recommendations step (US-IMPLEMENT-RECS, Opus 4.6, always last)
 
 ### ⚠️ CRITICAL: Unique Priorities Required
 
@@ -240,9 +240,9 @@ Stories should be independent enough to be worked on in separate agent iteration
 Every PRD automatically includes three final user stories for quality assurance. These ensure proper dual-model code review and implementation of fixes **at the end of every feature**:
 
 **With Jira (e.g., MED-523):**
-1. **MED-523-REVIEW** (Priority 997): First code review using GPT 5.2 Codex → outputs to `review-gpt.md`
+1. **MED-523-REVIEW** (Priority 997): First code review using GPT 5.3 Codex → outputs to `review-gpt.md`
 2. **MED-523-REVIEW-2** (Priority 998): Second code review using Gemini 3 Pro → outputs to `review-gemini.md`
-3. **MED-523-IMPL-RECS** (Priority 999): Implement recommendations from both reviews using Opus 4.5
+3. **MED-523-IMPL-RECS** (Priority 999): Implement recommendations from both reviews using Opus 4.6
 
 **Without Jira:**
 1. **US-REVIEW** (Priority 997): First code review
@@ -330,8 +330,8 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to ac
        },
        {
         "id": "[JIRA-123-REVIEW or US-REVIEW if no Jira]",
-        "title": "Code review - GPT 5.2 Codex",
-        "description": "As a principal engineer, I need to perform a thorough code review of all changes made during this feature implementation using GPT 5.2 Codex.",
+        "title": "Code review - GPT 5.3 Codex",
+        "description": "As a principal engineer, I need to perform a thorough code review of all changes made during this feature implementation using GPT 5.3 Codex.",
         "acceptanceCriteria": [
           "Review all new/modified files for code quality",
           "Check for performance issues (N+1 queries, memory leaks, etc.)",
@@ -343,7 +343,7 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to ac
         ],
         "priority": 997,
         "passes": false,
-        "notes": "Auto-generated review step (GPT 5.2 Codex). Output findings to .cursor/lazy-dev/features/{feature}/review-gpt.md"
+        "notes": "Auto-generated review step (GPT 5.3 Codex). Output findings to .cursor/lazy-dev/features/{feature}/review-gpt.md"
       },
       {
         "id": "[JIRA-123-REVIEW-2 or US-REVIEW-2 if no Jira]",
@@ -366,7 +366,7 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to ac
         "title": "Implement code review recommendations",
         "description": "As a developer, I need to implement the recommendations and fixes identified during both code reviews.",
         "acceptanceCriteria": [
-          "Read review-gpt.md for GPT 5.2 Codex review findings",
+          "Read review-gpt.md for GPT 5.3 Codex review findings",
           "Read review-gemini.md for Gemini 3 Pro review findings",
           "Synthesize and prioritize recommendations from both reviews",
           "Address all critical and high-priority issues from both reviews",
@@ -376,7 +376,7 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to ac
         ],
         "priority": 999,
         "passes": false,
-        "notes": "Auto-generated implementation step (Opus 4.5). Read both review-gpt.md and review-gemini.md from feature directory."
+        "notes": "Auto-generated implementation step (Opus 4.6). Read both review-gpt.md and review-gemini.md from feature directory."
       }
     ]
   }
@@ -777,7 +777,7 @@ Before finalizing the PRD, verify:
 - [ ] Priorities are unique and sequential (no duplicates: 1, 2, 3...)
 - [ ] Story IDs are unique and sequential (US-001, US-002...)
 - [ ] Non-goals/out-of-scope items documented in notes
-- [ ] **US-REVIEW included with priority 997** (first code review - GPT 5.2 Codex, outputs to review-gpt.md)
+- [ ] **US-REVIEW included with priority 997** (first code review - GPT 5.3 Codex, outputs to review-gpt.md)
 - [ ] **US-REVIEW-2 included with priority 998** (second code review - Gemini 3 Pro, outputs to review-gemini.md)
 - [ ] **US-IMPLEMENT-RECS included with priority 999** (implement recommendations from both reviews)
 - [ ] **Each story includes note:** "Follow project rules in ~/.cursor/rules/ folder"

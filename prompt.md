@@ -253,10 +253,10 @@ The lazy-dev loop uses **different AI models** for different story types to maxi
 
 | Story ID | Model | Purpose |
 |----------|-------|---------|
-| US-001 to US-NNN | Opus 4.5 | Implementation stories |
-| US-REVIEW | GPT 5.2 Codex | First code review |
+| US-001 to US-NNN | Opus 4.6 | Implementation stories |
+| US-REVIEW | GPT 5.3 Codex | First code review |
 | US-REVIEW-2 | Gemini 3 Pro | Second code review |
-| US-IMPLEMENT-RECS | Opus 4.5 | Implement review findings |
+| US-IMPLEMENT-RECS | Opus 4.6 | Implement review findings |
 
 ### Code Review Output Files
 
@@ -264,17 +264,17 @@ Each review story MUST output findings to an independent file:
 
 | Story | Output File | Purpose |
 |-------|-------------|---------|
-| US-REVIEW | `.cursor/lazy-dev/features/{feature}/review-gpt.md` | GPT 5.2 Codex findings |
+| US-REVIEW | `.cursor/lazy-dev/features/{feature}/review-gpt.md` | GPT 5.3 Codex findings |
 | US-REVIEW-2 | `.cursor/lazy-dev/features/{feature}/review-gemini.md` | Gemini 3 Pro findings |
 
-### US-REVIEW (GPT 5.2 Codex) Instructions
+### US-REVIEW (GPT 5.3 Codex) Instructions
 
 When processing US-REVIEW:
 1. Perform a comprehensive code review of all implementation changes
 2. Check for performance issues, security vulnerabilities, and code quality
 3. **Create `review-gpt.md`** in the feature directory with structured findings:
    ```markdown
-   # Code Review Findings - GPT 5.2 Codex
+   # Code Review Findings - GPT 5.3 Codex
    
    ## Critical Issues
    - [List critical issues that must be fixed]
@@ -317,7 +317,7 @@ When processing US-REVIEW-2:
    [Brief summary of overall code quality]
    ```
 
-### US-IMPLEMENT-RECS (Opus 4.5) Instructions
+### US-IMPLEMENT-RECS (Opus 4.6) Instructions
 
 When processing US-IMPLEMENT-RECS:
 1. **Read both review files:**
