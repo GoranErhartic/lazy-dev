@@ -2,6 +2,8 @@
 
 An autonomous agent loop framework for Cursor. Runs multiple agent iterations to complete user stories from a PRD, with automatic task breakdown, quality gates, and knowledge persistence.
 
+> **🚧 Maintenance in progress:** a 26-chunk hardening plan for the loop lives in [HANDOVER.md](HANDOVER.md) — read it before making changes to `go.sh`.
+
 ## How It Works
 
 ```
