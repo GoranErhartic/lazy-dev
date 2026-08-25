@@ -20,6 +20,15 @@
 
 set -e
 
+# ─────────────────────────────────────────────────────────────────────────────
+# CLI ENTRY POINT — direct execution only, NOT when sourced
+#
+# Sourcing this file (e.g. `source ./go.sh __test__`) only defines the
+# functions and globals above, for function-level tests. Flag parsing,
+# argument validation, and main() are skipped.
+# ─────────────────────────────────────────────────────────────────────────────
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+
 # Parse flags
 VERBOSE=""
 while [[ "$1" == -* ]]; do
@@ -50,6 +59,12 @@ while [[ "$1" == -* ]]; do
             echo "  ./go.sh features/user-auth      # Also accepts features/ prefix"
             echo "  ./go.sh -v my-feature           # With verbose output"
             echo "  ./go.sh --max-iterations 30 my-feature  # Custom max iterations"
+            echo ""
+            echo "Environment variables:"
+            echo "  LAZY_DEV_TIMEOUT=<s>         Per-iteration timeout in seconds (default: 1800)"
+            echo "  LAZY_DEV_MAX_ITERATIONS=<n>  Maximum iterations (default: 20)"
+            echo "  LAZY_DEV_FASTFAIL_SECS=<s>   Failed iterations shorter than this are not retried (default: 60; 0 disables)"
+            echo "  LAZY_DEV_FAKE_AGENT=<path>   Test hook: run this executable instead of the Cursor CLI"
             echo ""
             echo "To create a new feature:"
             echo "  mkdir -p features/<feature-name>"
@@ -84,12 +99,20 @@ if [ -z "$1" ]; then
     echo "  ./go.sh -v my-feature           # With verbose output"
     echo "  ./go.sh --max-iterations 30 my-feature  # Custom max iterations"
     echo ""
+    echo "Environment variables:"
+    echo "  LAZY_DEV_TIMEOUT=<s>         Per-iteration timeout in seconds (default: 1800)"
+    echo "  LAZY_DEV_MAX_ITERATIONS=<n>  Maximum iterations (default: 20)"
+    echo "  LAZY_DEV_FASTFAIL_SECS=<s>   Failed iterations shorter than this are not retried (default: 60; 0 disables)"
+    echo "  LAZY_DEV_FAKE_AGENT=<path>   Test hook: run this executable instead of the Cursor CLI"
+    echo ""
     echo "To create a new feature:"
     echo "  mkdir -p features/<feature-name>"
     echo "  cp examples/prd.json features/<feature-name>/"
     echo "  cp examples/progress.txt features/<feature-name>/"
     exit 1
 fi
+
+fi  # ── end CLI entry point (direct execution only) ──
 
 # Configuration
 # Strip "features/" prefix if provided (allows both "features/my-feature" and "my-feature")
@@ -120,16 +143,39 @@ AGENT_PID=""
 PIPELINE_PID=""
 CAFFEINATE_PID=""
 
+# Duration of the last run_iteration call, in seconds (set by run_iteration;
+# consumed by main's retry loop for the fast-fail decision)
+LAST_ITERATION_DURATION=0
+
 # Timeout for each iteration in seconds (30 minutes default)
 # Override with LAZY_DEV_TIMEOUT environment variable
 ITERATION_TIMEOUT="${LAZY_DEV_TIMEOUT:-1800}"
 
 # Maximum iterations to prevent infinite loops (default 20)
-# Override with LAZY_DEV_MAX_ITERATIONS environment variable
-MAX_ITERATIONS="${LAZY_DEV_MAX_ITERATIONS:-20}"
+# Precedence: --max-iterations flag (parsed above) > LAZY_DEV_MAX_ITERATIONS
+# env var > 20. Guarded so the flag value is not clobbered by this line.
+if [ -z "${MAX_ITERATIONS:-}" ]; then
+    MAX_ITERATIONS="${LAZY_DEV_MAX_ITERATIONS:-20}"
+fi
 
 # Maximum retries per iteration on failure
 MAX_RETRIES=3
+
+# Exponential backoff schedule (seconds) between retries: 5s, 15s, 45s
+BACKOFF_SCHEDULE=(5 15 45)
+
+# Fast-fail threshold (seconds): a FAILED iteration that ended in less than
+# this time is NOT retried - sub-60s failures are almost always config/auth/
+# model errors, not transient ones. 0 disables fast-fail.
+# Override with LAZY_DEV_FASTFAIL_SECS
+FASTFAIL_SECS="${LAZY_DEV_FASTFAIL_SECS:-60}"
+
+# Test hook: when set (non-empty), run_iteration uses this executable in
+# place of cursor/cursor-agent (same flags + prompt argument, same
+# tee | parse_agent_output pipeline). Lets you test loop behavior without
+# launching a real agent. Example:
+#   LAZY_DEV_FAKE_AGENT=/path/to/fake-agent.sh ./go.sh my-feature
+LAZY_DEV_FAKE_AGENT="${LAZY_DEV_FAKE_AGENT:-}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -294,6 +340,9 @@ parse_agent_output() {
     local thinking_started=0
     # Track if we're in an assistant streaming block
     local assistant_streaming=0
+    # Set to 1 when the final result event reports is_error=true; the function
+    # returns 1 in that case so the pipeline (pipefail) sees the agent failure
+    local result_failed=0
     
     # Process each line of NDJSON
     while IFS= read -r line; do
@@ -525,6 +574,7 @@ parse_agent_output() {
                 duration_s=$((duration_ms / 1000))
                 
                 if [ "$is_error" = "true" ]; then
+                    result_failed=1
                     print_line "${RED}[RESULT]${NC} ${RED}Failed${NC} in ${duration_s}s"
                 else
                     print_line "${GREEN}[RESULT]${NC} ${GREEN}Success${NC} in ${duration_s}s"
@@ -553,6 +603,14 @@ parse_agent_output() {
     
     # Final newline to ensure clean ending
     printf '\r\n'
+    
+    # Propagate agent failure to the caller: is_error=true in the final result
+    # event means the agent reported failure (return 1 so pipefail +
+    # run_iteration can act on it)
+    if [ "$result_failed" = "1" ]; then
+        return 1
+    fi
+    return 0
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1234,6 +1292,8 @@ EOF
 run_iteration() {
     local iteration=$1
     local start_time=$(date +%s)
+    # Reset the fast-fail input (main reads this after the call)
+    LAST_ITERATION_DURATION=0
     
     echo ""
     echo "═══════════════════════════════════════════════════════════════"
@@ -1288,7 +1348,12 @@ $PROMPT_CONTENT"
     local CURSOR_ARGS=()
     
     # Determine which command to use
-    if [ "${USE_CURSOR_AGENT_SUBCOMMAND:-0}" = "1" ]; then
+    if [ -n "${LAZY_DEV_FAKE_AGENT:-}" ]; then
+        # Test hook: use the fake agent executable in place of the Cursor CLI
+        # (same flags + prompt argument; still goes through tee | parse_agent_output)
+        CURSOR_CMD="$LAZY_DEV_FAKE_AGENT"
+        log_info "Using LAZY_DEV_FAKE_AGENT executable: $CURSOR_CMD"
+    elif [ "${USE_CURSOR_AGENT_SUBCOMMAND:-0}" = "1" ]; then
         CURSOR_CMD="cursor"
         CURSOR_ARGS+=("agent")
     else
@@ -1347,6 +1412,10 @@ $PROMPT_CONTENT"
     # Export VERBOSE so subshell's parse_agent_output can access it
     export VERBOSE
     (
+        # Failure detection: make the subshell exit non-zero if ANY pipeline
+        # stage fails (notably the agent itself). Without pipefail the status
+        # would be parse_agent_output's (always 0), masking agent crashes.
+        set -o pipefail
         # Create new process group for cleanup
         if command -v stdbuf &> /dev/null; then
             log_debug "Using stdbuf for unbuffered output"
@@ -1416,6 +1485,13 @@ $PROMPT_CONTENT"
         echo "═══ Iteration failed (exit ${exit_code}) - ${story_counts} stories done ═══════════════"
     fi
     echo ""
+    
+    # Expose the duration for main's fast-fail decision
+    LAST_ITERATION_DURATION=$duration
+    
+    # Return the real exit status (0 = success, 124 = timeout, other = agent/
+    # pipeline failure) so main's retry / fast-fail logic can act on it
+    return $exit_code
 }
 
 # Signal handler for immediate response to Ctrl+C during wait loops
@@ -1520,14 +1596,24 @@ main() {
             fi
             
             retry_count=$((retry_count + 1))
+            
+            # Fast-fail: a failed iteration that ended quickly is almost always
+            # a config/auth/model error, not a transient one - do not retry it.
+            # LAZY_DEV_FASTFAIL_SECS=0 disables fast-fail entirely.
+            if [ "$FASTFAIL_SECS" -gt 0 ] && [ "${LAST_ITERATION_DURATION:-0}" -lt "$FASTFAIL_SECS" ]; then
+                log_error "Fast-fail: iteration $iteration failed after ${LAST_ITERATION_DURATION}s (< ${FASTFAIL_SECS}s) - not retrying (likely config/auth/model error)"
+                break
+            fi
+            
             if [ $retry_count -lt $MAX_RETRIES ]; then
-                log_warn "Iteration failed, retry $retry_count of $MAX_RETRIES"
-                sleep 5  # backoff before retry
+                local backoff_delay=${BACKOFF_SCHEDULE[$((retry_count - 1))]:-45}
+                log_warn "Iteration failed, retry $retry_count of $MAX_RETRIES (backoff ${backoff_delay}s)"
+                sleep "$backoff_delay"
             fi
         done
         
         if [ $iteration_success -eq 0 ]; then
-            log_error "Iteration $iteration failed after $MAX_RETRIES retries"
+            log_error "Iteration $iteration failed after $retry_count attempt(s)"
             # Continue to next iteration anyway - the story might still be incomplete
         fi
         
@@ -1551,4 +1637,7 @@ main() {
     done
 }
 
-main "$@"
+# Only run main when executed directly (not when sourced for function tests)
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
