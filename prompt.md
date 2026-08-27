@@ -84,7 +84,7 @@ If mcp_open-websearch_search fails (rate limits, connection issues):
 
 ## 🔒 MANDATORY: Follow Project Development Rules
 
-**BEFORE implementing any code, you MUST read and follow the rules in `.cursor/rules/`.**
+**BEFORE implementing any code, you MUST read and follow the rules in `.cursor/rules/` (if it exists in this project).**
 
 ### Rule Discovery Protocol
 
@@ -164,7 +164,7 @@ Read these rules to understand the full protocol.
 
 ### Your Loop (Each Iteration)
 
-1. **Load Rules** → Read `.cursor/rules/agent-behavior.mdc` and applicable language/pattern rules
+1. **Load Rules** → Read `.cursor/rules/agent-behavior.mdc` (if it exists in this project) and applicable language/pattern rules
 2. **Load Discovered Patterns** → Read ALL `.mdc` files in `rules/discovered/` (cross-feature learning)
 3. **Load Context** → Read PRD, progress log for this feature
 4. **Select** → Pick **exactly ONE** story where `passes: false` (highest priority first)
@@ -183,12 +183,12 @@ The loop runner monitors the PRD state automatically and will stop when all stor
 
 **If `prd.json` fails to parse:** restore it from the last commit (`git checkout -- <path-to-prd.json>`), verify it parses (e.g. `jq . <path-to-prd.json>`), and only then proceed with story selection.
 
-1. **`.cursor/rules/agent-behavior.mdc`** — Project development rules (MANDATORY)
-2. **`.cursor/rules/languages/react/*.mdc`** — React/TypeScript patterns (for frontend work)
-3. **`lazy-dev/rules/*.mdc`** — Lazy-dev agent loop rules (agent-loop, task-breakdown, quality-gates, pattern-discovery)
-4. **`rules/discovered/*.mdc`** — Shared patterns from all previous features (cross-feature learning)
-5. Feature's `prd.json` — What to work on (in lazy-dev/features/)
-6. Feature's `progress.txt` — Patterns and context from previous iterations
+1. **`.cursor/rules/agent-behavior.mdc`** — Project development rules (MANDATORY, if it exists in this project)
+2. **`.cursor/rules/languages/react/*.mdc`** — React/TypeScript patterns (for frontend work, if it exists in this project)
+3. **`rules/*.mdc`** in the lazy-dev directory — Lazy-dev agent loop rules (agent-loop, task-breakdown, quality-gates, pattern-discovery; exact lazy-dev path is in your Feature Context)
+4. **`rules/discovered/*.mdc`** in the lazy-dev directory — Shared patterns from all previous features (cross-feature learning)
+5. Feature's `prd.json` — What to work on (path in your Feature Context)
+6. Feature's `progress.txt` — Patterns and context from previous iterations (path in your Feature Context)
 
 ### Files to Update After
 
@@ -268,8 +268,8 @@ Each review story MUST output findings to an independent file:
 
 | Story | Output File | Purpose |
 |-------|-------------|---------|
-| US-REVIEW | `.cursor/lazy-dev/features/{feature}/review-gpt.md` | GPT 5.3 Codex findings |
-| US-REVIEW-2 | `.cursor/lazy-dev/features/{feature}/review-gemini.md` | Gemini 3 Pro findings |
+| US-REVIEW | `<lazy-dev>/features/<feature>/review-gpt.md` (see Feature Context for exact path) | GPT 5.3 Codex findings |
+| US-REVIEW-2 | `<lazy-dev>/features/<feature>/review-gemini.md` (see Feature Context for exact path) | Gemini 3 Pro findings |
 
 ### US-REVIEW (GPT 5.3 Codex) Instructions
 
@@ -324,9 +324,9 @@ When processing US-REVIEW-2:
 ### US-IMPLEMENT-RECS (Opus 4.6) Instructions
 
 When processing US-IMPLEMENT-RECS:
-1. **Read both review files:**
-   - `.cursor/lazy-dev/features/{feature}/review-gpt.md`
-   - `.cursor/lazy-dev/features/{feature}/review-gemini.md`
+1. **Read both review files** (in the feature directory; paths in your Feature Context):
+   - `review-gpt.md`
+   - `review-gemini.md`
 2. **Synthesize findings** from both reviews
 3. **Prioritize** based on severity (Critical → High → Medium → Low)
 4. **Implement** all critical and high-priority fixes
@@ -338,7 +338,7 @@ After completing the FINAL story (US-IMPLEMENT-RECS), if you commit your code ch
 
 **You MUST amend the commit to include them:**
 ```bash
-git add .cursor/lazy-dev/features/<feature>/prd.json .cursor/lazy-dev/features/<feature>/progress.txt
+git add <lazy-dev>/features/<feature>/prd.json <lazy-dev>/features/<feature>/progress.txt
 git commit --amend --no-edit
 ```
 

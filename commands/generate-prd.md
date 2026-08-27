@@ -285,7 +285,7 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to ac
    * This ensures all work is isolated on a dedicated branch.
 
 3. **Create Feature Directory:**
-   * Create folder: `.cursor/lazy-dev/features/<feature-name>/`
+   * Create folder: `<lazy-dev>/features/<feature-name>/` (substitute the actual lazy-dev install path for this project)
    * This folder will contain:
      - `prd.json` - The PRD file
      - `progress.txt` - Will be created during implementation
@@ -314,7 +314,7 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to ac
          ],
          "priority": 1,
          "passes": false,
-         "notes": "Follow project rules in ~/.cursor/rules/ folder"
+         "notes": "Follow project rules in .cursor/rules/ folder (if it exists in this project)"
        },
        {
          "id": "[JIRA-123-002 or US-002 if no Jira]",
@@ -326,7 +326,7 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to ac
          ],
          "priority": 2,
          "passes": false,
-         "notes": "Follow project rules in ~/.cursor/rules/ folder"
+         "notes": "Follow project rules in .cursor/rules/ folder (if it exists in this project)"
        },
        {
         "id": "[JIRA-123-REVIEW or US-REVIEW if no Jira]",
@@ -343,7 +343,7 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to ac
         ],
         "priority": 997,
         "passes": false,
-        "notes": "Auto-generated review step (GPT 5.3 Codex). Output findings to .cursor/lazy-dev/features/{feature}/review-gpt.md"
+        "notes": "Auto-generated review step (GPT 5.3 Codex). Output findings to <lazy-dev>/features/<feature>/review-gpt.md (substitute actual feature name and lazy-dev path)"
       },
       {
         "id": "[JIRA-123-REVIEW-2 or US-REVIEW-2 if no Jira]",
@@ -359,7 +359,7 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to ac
         ],
         "priority": 998,
         "passes": false,
-        "notes": "Auto-generated review step (Gemini 3 Pro). Output findings to .cursor/lazy-dev/features/{feature}/review-gemini.md"
+        "notes": "Auto-generated review step (Gemini 3 Pro). Output findings to <lazy-dev>/features/<feature>/review-gemini.md (substitute actual feature name and lazy-dev path)"
       },
       {
         "id": "[JIRA-123-IMPL-RECS or US-IMPLEMENT-RECS if no Jira]",
@@ -565,7 +565,7 @@ After both reviews, **immediately apply all recommended changes** to the PRD:
    * Inform the user that the PRD is ready for the agent loop.
    * Provide the command to start implementation:
      ```
-     cd .cursor/lazy-dev && ./go.sh features/<feature-name>
+     cd <lazy-dev-directory> && ./go.sh features/<feature-name>
      ```
    * Explain that the agent will:
      - Pick up the highest priority incomplete story
@@ -693,7 +693,7 @@ Does this accurately capture what you want? If yes, I'll proceed with generating
       ],
       "priority": 1,
       "passes": false,
-      "notes": "Follow project rules in ~/.cursor/rules/ folder"
+      "notes": "Follow project rules in .cursor/rules/ folder (if it exists in this project)"
     },
     {
       "id": "TASK-456-002",
@@ -722,7 +722,7 @@ Does this accurately capture what you want? If yes, I'll proceed with generating
       ],
       "priority": 3,
       "passes": false,
-      "notes": "Follow project rules in ~/.cursor/rules/ folder"
+      "notes": "Follow project rules in .cursor/rules/ folder (if it exists in this project)"
     },
     {
       "id": "TASK-456-004",
@@ -737,7 +737,7 @@ Does this accurately capture what you want? If yes, I'll proceed with generating
       ],
       "priority": 4,
       "passes": false,
-      "notes": "Non-goals: No priority-based notifications, no automatic priority assignment. Follow project rules in ~/.cursor/rules/ folder"
+      "notes": "Non-goals: No priority-based notifications, no automatic priority assignment. Follow project rules in .cursor/rules/ folder (if it exists in this project)"
     }
   ]
 }
@@ -780,7 +780,7 @@ Before finalizing the PRD, verify:
 - [ ] **US-REVIEW included with priority 997** (first code review - GPT 5.3 Codex, outputs to review-gpt.md)
 - [ ] **US-REVIEW-2 included with priority 998** (second code review - Gemini 3 Pro, outputs to review-gemini.md)
 - [ ] **US-IMPLEMENT-RECS included with priority 999** (implement recommendations from both reviews)
-- [ ] **Each story includes note:** "Follow project rules in ~/.cursor/rules/ folder"
+- [ ] **Each story includes note:** "Follow project rules in .cursor/rules/ folder (if it exists in this project)"
 - [ ] **If Jira task was mentioned:** `jiraTaskId` field is set and branch name includes it
 - [ ] **If Jira task was mentioned:** Story IDs use Jira prefix (e.g., `MED-523-001`, `MED-523-002`)
 - [ ] `prd.json` is valid JSON

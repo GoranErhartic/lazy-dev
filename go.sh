@@ -124,8 +124,22 @@ fi  # ── end CLI entry point (direct execution only) ──
 # Strip "features/" prefix if provided (allows both "features/my-feature" and "my-feature")
 FEATURE_NAME="${1#features/}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# PROJECT_ROOT is the git root / workspace root (go up from .cursor/lazy-dev)
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# PROJECT_ROOT is the git workspace root (supports lazy-dev at any install path)
+if _git_root=$(git rev-parse --show-toplevel 2>/dev/null); then
+    PROJECT_ROOT="$(cd "$_git_root" && pwd -P)"
+else
+    PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+fi
+unset _git_root
+# LAZY_DEV_REL: SCRIPT_DIR relative to PROJECT_ROOT (e.g. .cursor/lazy-dev; "." if equal)
+_lazy_dev_abs="$(cd "$SCRIPT_DIR" && pwd -P)"
+_root_abs="$(cd "$PROJECT_ROOT" && pwd -P)"
+if [ "$_lazy_dev_abs" = "$_root_abs" ]; then
+    LAZY_DEV_REL="."
+else
+    LAZY_DEV_REL="${_lazy_dev_abs#${_root_abs}/}"
+fi
+unset _lazy_dev_abs _root_abs
 FEATURE_DIR="$SCRIPT_DIR/features/$FEATURE_NAME"
 PRD_FILE="$FEATURE_DIR/prd.json"
 PROGRESS_FILE="$FEATURE_DIR/progress.txt"
@@ -1440,6 +1454,11 @@ run_iteration() {
         LAZY_DEV_SESSION_MARKER="lazydev-$$-$(date +%s)"
     fi
     
+    # Agent-facing paths relative to project root (derived from install location)
+    local LAZY_DEV_PRD_PATH="${LAZY_DEV_REL}/features/$FEATURE_NAME/prd.json"
+    local LAZY_DEV_PROGRESS_PATH="${LAZY_DEV_REL}/features/$FEATURE_NAME/progress.txt"
+    local LAZY_DEV_DISCOVERED_PATH="${LAZY_DEV_REL}/rules/discovered/"
+
     # Add feature-specific context with STRICT git policy
     # All paths are relative to project root (workspace)
     CONTEXT="<!-- lazy-dev session: ${LAZY_DEV_SESSION_MARKER} -->
@@ -1447,9 +1466,10 @@ run_iteration() {
 # Feature Context
 - Feature: $FEATURE_NAME
 - Workspace/Project Root: $PROJECT_ROOT
-- PRD: .cursor/lazy-dev/features/$FEATURE_NAME/prd.json
-- Progress: .cursor/lazy-dev/features/$FEATURE_NAME/progress.txt
-- Shared discovered patterns: .cursor/lazy-dev/rules/discovered/ (READ these first - cross-feature learning)
+- Lazy-dev directory: $LAZY_DEV_REL
+- PRD: $LAZY_DEV_PRD_PATH
+- Progress: $LAZY_DEV_PROGRESS_PATH
+- Shared discovered patterns: $LAZY_DEV_DISCOVERED_PATH (READ these first - cross-feature learning)
 - Git Branch: $CURRENT_GIT_BRANCH
 
 # ⚠️ CRITICAL GIT POLICY - READ CAREFULLY ⚠️
@@ -1529,6 +1549,14 @@ $PROMPT_CONTENT"
     
     # Debug: show exact command being run (verbose mode only)
     log_debug "Executing: $CURSOR_CMD ${CURSOR_ARGS[*]} <...prompt...>"
+
+    if [ "${LAZY_DEV_PRINT_CONTEXT:-}" = "1" ]; then
+        echo "" >&2
+        echo "========== LAZY_DEV_PRINT_CONTEXT (start) ==========" >&2
+        printf '%s\n' "$CONTEXT" >&2
+        echo "========== LAZY_DEV_PRINT_CONTEXT (end) ==========" >&2
+        echo "" >&2
+    fi
 
     # Run cursor-agent with the prompt
     # Use the global OUTPUT_FILE (managed by main() trap) for raw output storage
