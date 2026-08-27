@@ -1428,6 +1428,21 @@ EOF
     fi
 }
 
+# Inline core protocol rules into the agent prompt (rules/*.mdc only; not discovered/)
+build_inlined_rules() {
+    local rules_block="" rule_file rule_name
+    while IFS= read -r rule_file; do
+        [ -f "$rule_file" ] || continue
+        rule_name=$(basename "$rule_file")
+        rules_block+="### rules/${rule_name}
+
+$(cat "$rule_file")
+
+"
+    done < <(find "$SCRIPT_DIR/rules" -maxdepth 1 -name '*.mdc' -type f | sort)
+    printf '%s' "$rules_block"
+}
+
 # Run a single agent iteration
 run_iteration() {
     local iteration=$1
@@ -1443,8 +1458,10 @@ run_iteration() {
     echo "═══════════════════════════════════════════════════════════════"
     echo ""
 
-    # Build prompt with feature context
+    # Build prompt with feature context and inlined protocol rules
     PROMPT_CONTENT=$(cat "$PROMPT_FILE")
+    local INLINED_RULES
+    INLINED_RULES=$(build_inlined_rules)
     
     # Get current branch name
     CURRENT_GIT_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
@@ -1473,7 +1490,13 @@ run_iteration() {
 
 # Git: git push is ABSOLUTELY FORBIDDEN (pre-push hook active). Full git policy is in the prompt below.
 
-$PROMPT_CONTENT"
+$PROMPT_CONTENT
+
+---
+
+# Injected Protocol (canonical source: ${LAZY_DEV_REL}/rules/*.mdc)
+
+$INLINED_RULES"
 
     # Build cursor-agent command with appropriate flags
     # -p / --print: Run in non-interactive (headless) mode

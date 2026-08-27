@@ -136,7 +136,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-006 — Model env overrides + fallback to CLI default model (RESOLVED 2026-08-27, commit 6f6e08f)
 - [x] CHUNK-007 — Derived paths (no hardcoded `.cursor/lazy-dev`) + `LAZY_DEV_PRINT_CONTEXT` (RESOLVED 2026-08-27, commit 6df4edd)
 - [x] CHUNK-008 — Prompt/rules dedup (one canonical git policy, one commit-type table) (RESOLVED 2026-08-27, commit b529bd0)
-- [ ] CHUNK-009 — Runner-inlined rule injection (deterministic protocol)
+- [x] CHUNK-009 — Runner-inlined rule injection (deterministic protocol) (RESOLVED 2026-08-27, commit pending)
 - [ ] CHUNK-010 — Assigned-story injection into CONTEXT
 - [ ] CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens)
 - [ ] CHUNK-012 — Read-only review contract + diff-range context for reviewers
@@ -847,6 +847,14 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Grep: zero `.cursor/lazy-dev` or `~/.cursor` in `prompt.md`/`generate-prd.md` agent-facing paths. Scratch **A** (`.cursor/lazy-dev`): `Lazy-dev directory: .cursor/lazy-dev`; `ls` OK for PRD, progress, discovered. Scratch **B** (`tools/lazy-dev`): `Lazy-dev directory: tools/lazy-dev`; all three paths exist from repo root. Source harness from lazy-dev repo: `LAZY_DEV_REL=.`. `LAZY_DEV_PRINT_CONTEXT=1` prints delimited block with correct paths.
 - **State left behind:** `main`, clean tree pending commit; `LAZY_DEV_REL` + `LAZY_DEV_PRINT_CONTEXT` ready for CHUNK-009/010/018 verification.
 - **First step for next chunk (CHUNK-008):** Read CHUNK-008 spec; dedup git policy (shrink CONTEXT git block) and commit-type tables across `prompt.md` + `rules/*.mdc`.
+
+### CHUNK-009 — Runner-inlined rule injection (deterministic protocol) (RESOLVED 2026-08-27 | commit pending)
+- **Did:** `go.sh`: added `build_inlined_rules()` (sorted `rules/*.mdc` at depth 1, excludes `discovered/`); `run_iteration` appends separator + **Injected Protocol** block with `### rules/<file>.mdc` headings and full rule bodies after `prompt.md`. `prompt.md`: replaced auto-apply paragraph with loop-injection truth. Plus `HANDOVER.md` queue flip + this note.
+- **Deviations from spec:** none.
+- **Gotchas:** (1) Rule order is deterministic via `find … | sort` (agent-loop → pattern-discovery → quality-gates → task-breakdown). (2) `cursor agent --help` / `cursor-agent --help` expose no rules-discovery flag or extra rule-path option — inlining is the correct approach. (3) CHUNK-018 will cap `rules/discovered/` injection separately; do not add discovered files here.
+- **Verification evidence:** `bash -n go.sh` → OK. CLI: `cursor-agent --help` — no `--rules` / rule-path flags (workspace/plugin-dir only). Scratch `/tmp/lazydev-chunk009`: `LAZY_DEV_PRINT_CONTEXT=1` + `LAZY_DEV_FAKE_AGENT` → all four phrases present in stderr dump and fake-agent prompt capture: `Iteration Lifecycle`, `Decomposition Process`, `Pattern Discovery Protocol`, `Definition of Done`; headings `### rules/agent-loop.mdc` … `task-breakdown.mdc`; `# Injected Protocol (canonical source: .cursor/lazy-dev/rules/*.mdc)`.
+- **State left behind:** `main`, clean tree pending commit; inlined rules ready for CHUNK-010 assignment block (append after rules, before agent launch guard).
+- **First step for next chunk (CHUNK-010):** Read CHUNK-010 spec; add `## Your Assignment` block to CONTEXT after fetching next story title; guard empty `next_story_id`.
 
 ### CHUNK-008 — Prompt/rules dedup (one canonical git policy, one commit-type table) (RESOLVED 2026-08-27 | commit b529bd0)
 - **Did:** Shrunk `go.sh` CONTEXT git block to one-line push ban + pointer to prompt. Canonical git policy and full commit-type table (`feat`/`fix`/`refactor`/`test`/`docs`/`chore`) live in `prompt.md`; `agent-loop.mdc` and `quality-gates.mdc` now point to it. Compressed web-search rule to one compact section in `prompt.md`; `agent-loop.mdc` uses one-line pointer. Trimmed redundant project-rules tables and Quick Reference in `prompt.md`. Files: `go.sh`, `prompt.md`, `rules/agent-loop.mdc`, `rules/quality-gates.mdc`, `HANDOVER.md`.

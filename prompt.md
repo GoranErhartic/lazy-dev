@@ -64,7 +64,7 @@ For library documentation, use `mcp_context7_resolve-library-id` then `mcp_conte
 
 ## How It Works
 
-The rules in `rules/` define your behavior (they auto-apply): `agent-loop.mdc` (lifecycle/handoffs), `task-breakdown.mdc` (decomposition), `quality-gates.mdc` (Definition of Done), `pattern-discovery.mdc` (reusable patterns). Read them to understand the full protocol.
+The loop injects the full protocol into your prompt (see **Injected Protocol** below). The files under the lazy-dev `rules/` directory (path in Feature Context) are the canonical source: `agent-loop.mdc` (lifecycle/handoffs), `task-breakdown.mdc` (decomposition), `quality-gates.mdc` (Definition of Done), `pattern-discovery.mdc` (reusable patterns).
 
 ---
 
