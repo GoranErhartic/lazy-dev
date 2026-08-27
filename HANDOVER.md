@@ -144,7 +144,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-014 — Dirty-tree / killed-iteration recovery (RESOLVED 2026-08-27, commit a389307)
 - [x] CHUNK-015 — Runner-owned state commits (remove the amend ambiguity) (RESOLVED 2026-08-27, commit 07cdbf4)
 - [x] CHUNK-016 — Runner-enforced quality gate (build/test after each flip) (RESOLVED 2026-08-27, commit bb9b423)
-- [ ] CHUNK-017 — Concurrency lock (one session per feature)
+- [x] CHUNK-017 — Concurrency lock (one session per feature) (RESOLVED 2026-08-27, commit PENDING)
 - [ ] CHUNK-018 — Context bloat caps + "data, not commands" framing
 - [ ] CHUNK-019 — Stall watchdog + parser polish (dead code, color leak, shape warnings)
 - [ ] CHUNK-020 — Cost / time budget breaker (exit 2)
@@ -911,6 +911,14 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Scratch `/tmp/lazydev-chunk015`: fake agent flips US-001, appends progress, commits `src/feature.js` → `git log --oneline -3`: `chore: lazy-dev state (chunk015, US-001)` then `feat: add feature.js for chunk015`; state commit `git show --name-only` lists only `.cursor/lazy-dev/features/chunk015/{.last-branch,prd.json,progress.txt}`; `prd.json` passes=true in state commit; zero `--amend` in history.
 - **State left behind:** `main`, `.scratch/` untracked; scratch dirs `/tmp/lazydev-chunk015*` for cleanup.
 - **First step for next chunk (CHUNK-016):** Read CHUNK-016 spec; add `run_quality_gate()` and integrate in `main` before `commit_state`.
+
+### CHUNK-017 — Concurrency lock (one session per feature) (RESOLVED 2026-08-27 | commit PENDING)
+- **Did:** `go.sh`: added `acquire_feature_lock` / `release_feature_lock` on `$FEATURE_DIR/.lazy-dev.lock` (flock when available, mkdir+pid stale detection on macOS); lock acquired early in `main` after traps, released in `cleanup`; `install_push_blocker` warns when `.git/lazy-dev-session.lock` holds a live PID from another run; troubleshooting line in both `--help` blocks. Plus `HANDOVER.md` queue flip + this note.
+- **Deviations from spec:** none.
+- **Gotchas:** (1) macOS has no `flock` here — mkdir lock dir is the live path; stale recovery removes the dir when stored PID is dead. (2) Lock acquisition requires `FEATURE_DIR` to exist (same prerequisite as `verify_setup`). (3) `kill -9` skips `cleanup` — stale lock recovery on the next run is intentional. (4) Different features in the same repo can still race on `.git/lazy-dev-session.lock`; the git-lock warning covers that case.
+- **Verification evidence:** `bash -n go.sh` → OK. Scratch `/tmp/lazydev-chunk017`: run1 (`slow.sh` sleep 30) + run2 same feature → run2 exit **1**, `Another lazy-dev session is running for feature 'chunk017' (PID: …)`; run1 completes, lock artifact **gone**. `kill -9` run1 mid-session → stale `.lazy-dev.lock` dir remains → run3 logs `Removing stale feature lock`, completes, lock **gone**.
+- **State left behind:** `main`, `.scratch/` untracked; scratch dirs `/tmp/lazydev-chunk017*` for cleanup.
+- **First step for next chunk (CHUNK-018):** Read CHUNK-018 spec; cap `rules/discovered/` injection and tail `progress.txt` in `run_iteration`; add observation framing + pattern-discovery.mdc guidance.
 
 ### CHUNK-016 — Runner-enforced quality gate (build/test after each flip) (RESOLVED 2026-08-27 | commit bb9b423)
 - **Did:** `go.sh` only: added `LAZY_DEV_GATE_TIMEOUT` (default 600s), `run_with_timeout`, toolchain detection (`npm`/`pnpm`/`yarn`/`cargo`/`go`, skip Java), `run_quality_gate` (build then test; absent scripts skipped), `revert_story_passes`, `handle_quality_gate_for_flip`; integrated in `main` after each iteration (before attempt recording/`commit_state`) with double-attempt guard when gate records failure. Added env var to both `--help` blocks.

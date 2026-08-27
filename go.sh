@@ -70,6 +70,9 @@ while [[ "$1" == -* ]]; do
             echo "  LAZY_DEV_MODEL_REVIEW2=<id>  Second review story model (default: gemini-3-pro)"
             echo "  LAZY_DEV_GATE_TIMEOUT=<s>    Per-gate build/test timeout in seconds (default: 600)"
             echo ""
+            echo "Troubleshooting:"
+            echo "  Stale feature lock after a crash: rm -rf features/<feature>/.lazy-dev.lock"
+            echo ""
             echo "To create a new feature:"
             echo "  mkdir -p features/<feature-name>"
             echo "  cp examples/prd.json features/<feature-name>/"
@@ -112,6 +115,9 @@ if [ -z "$1" ]; then
     echo "  LAZY_DEV_MODEL_REVIEW=<id>   First review story model (default: gpt-5.3-codex)"
     echo "  LAZY_DEV_MODEL_REVIEW2=<id>  Second review story model (default: gemini-3-pro)"
     echo "  LAZY_DEV_GATE_TIMEOUT=<s>    Per-gate build/test timeout in seconds (default: 600)"
+    echo ""
+    echo "Troubleshooting:"
+    echo "  Stale feature lock after a crash: rm -rf features/<feature>/.lazy-dev.lock"
     echo ""
     echo "To create a new feature:"
     echo "  mkdir -p features/<feature-name>"
@@ -177,6 +183,10 @@ LAST_ASSIGNED_STORY_ID=""
 CURRENT_ITERATION=0
 ITERATION_START_EPOCH=0
 LAZY_DEV_ITERATION_ACTIVE=0
+
+# Per-feature concurrency lock (CHUNK-017): flock fd or mkdir lock directory
+LAZY_DEV_FEATURE_LOCK_FD=""
+LAZY_DEV_FEATURE_LOCK_DIR=""
 
 # Timeout for each iteration in seconds (30 minutes default)
 # Override with LAZY_DEV_TIMEOUT environment variable
@@ -803,6 +813,9 @@ cleanup() {
     fi
     SPINNER_PID_FILE=""
     
+    # Release per-feature concurrency lock
+    release_feature_lock
+
     # Remove push blocker hook and session lock file
     remove_push_blocker
     
@@ -1584,6 +1597,97 @@ detect_main_branch() {
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# CONCURRENCY: One lazy-dev session per feature
+# ═══════════════════════════════════════════════════════════════════════════
+
+feature_lock_path() {
+    echo "$FEATURE_DIR/.lazy-dev.lock"
+}
+
+# macOS fallback when flock is unavailable: atomic mkdir lock with stale detection
+_acquire_feature_lock_mkdir() {
+    local lock_dir="$1"
+    local retry_stale="${2:-0}"
+    local stored_pid=""
+
+    if mkdir "$lock_dir" 2>/dev/null; then
+        echo $$ > "$lock_dir/pid"
+        LAZY_DEV_FEATURE_LOCK_DIR="$lock_dir"
+        log_debug "Acquired feature lock (mkdir): $lock_dir"
+        return 0
+    fi
+
+    if [ -f "$lock_dir/pid" ]; then
+        stored_pid=$(cat "$lock_dir/pid" 2>/dev/null || true)
+    fi
+
+    if [ -n "$stored_pid" ] && kill -0 "$stored_pid" 2>/dev/null; then
+        log_error "Another lazy-dev session is running for feature '$FEATURE_NAME' (PID: $stored_pid in $lock_dir)"
+        exit 1
+    fi
+
+    if [ "$retry_stale" -eq 0 ]; then
+        log_warn "Removing stale feature lock (PID ${stored_pid:-unknown} not running): $lock_dir"
+        rm -rf "$lock_dir"
+        _acquire_feature_lock_mkdir "$lock_dir" 1
+        return $?
+    fi
+
+    log_error "Could not acquire feature lock for feature '$FEATURE_NAME' (contention at $lock_dir)"
+    exit 1
+}
+
+# Acquire exclusive lock on $FEATURE_DIR/.lazy-dev.lock (call early in main, before git setup)
+acquire_feature_lock() {
+    local lock_path
+    lock_path=$(feature_lock_path)
+
+    if [ ! -d "$FEATURE_DIR" ]; then
+        log_error "Feature directory not found: $FEATURE_DIR"
+        log_info "Create it with:"
+        log_info "  mkdir -p $FEATURE_DIR"
+        log_info "  cp $SCRIPT_DIR/examples/prd.json $FEATURE_DIR/"
+        log_info "  cp $SCRIPT_DIR/examples/progress.txt $FEATURE_DIR/"
+        exit 1
+    fi
+
+    if command -v flock >/dev/null 2>&1; then
+        exec 9>"$lock_path"
+        if ! flock -n 9; then
+            local other_pid=""
+            if [ -f "$lock_path" ]; then
+                other_pid=$(cat "$lock_path" 2>/dev/null || true)
+            fi
+            log_error "Another lazy-dev session is running for feature '$FEATURE_NAME' (PID: ${other_pid:-unknown} in $lock_path)"
+            exit 1
+        fi
+        echo $$ > "$lock_path"
+        LAZY_DEV_FEATURE_LOCK_FD=9
+        log_debug "Acquired feature lock (flock): $lock_path"
+        return 0
+    fi
+
+    _acquire_feature_lock_mkdir "$lock_path" 0
+}
+
+release_feature_lock() {
+    local lock_path
+    lock_path=$(feature_lock_path)
+
+    if [ -n "${LAZY_DEV_FEATURE_LOCK_FD:-}" ]; then
+        flock -u "$LAZY_DEV_FEATURE_LOCK_FD" 2>/dev/null || true
+        exec 9>&- 2>/dev/null || true
+        LAZY_DEV_FEATURE_LOCK_FD=""
+        rm -f "$lock_path" 2>/dev/null || true
+    fi
+
+    if [ -n "${LAZY_DEV_FEATURE_LOCK_DIR:-}" ] && [ -d "$LAZY_DEV_FEATURE_LOCK_DIR" ]; then
+        rm -rf "$LAZY_DEV_FEATURE_LOCK_DIR"
+        LAZY_DEV_FEATURE_LOCK_DIR=""
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
 # GIT SAFETY: BLOCK ALL PUSH OPERATIONS
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -1595,7 +1699,16 @@ install_push_blocker() {
     local hook_file="$git_dir/hooks/pre-push"
     local lock_file="$git_dir/lazy-dev-session.lock"
     local lazy_marker="# LAZY-DEV-PUSH-BLOCKER"
-    
+    local existing_pid=""
+
+    # Warn if another session's push-blocker lock is still live (different feature/repo run)
+    if [ -f "$lock_file" ]; then
+        existing_pid=$(cat "$lock_file" 2>/dev/null || true)
+        if [ -n "$existing_pid" ] && [ "$existing_pid" != "$$" ] && kill -0 "$existing_pid" 2>/dev/null; then
+            log_warn "Another lazy-dev session appears active (PID $existing_pid in $lock_file) - push blocker will still be installed for this session"
+        fi
+    fi
+
     # Create lock file to indicate active session
     echo "$$" > "$lock_file"
     
@@ -2282,6 +2395,9 @@ main() {
     # QUIT (Ctrl+\) and HUP (terminal closed) also trigger immediate cleanup
     trap handle_interrupt INT QUIT HUP
     trap cleanup EXIT TERM
+
+    # One session per feature — before git setup (releases in cleanup EXIT trap)
+    acquire_feature_lock
     
     # Start caffeinate to prevent system sleep (keeps network connections alive)
     # -d = prevent display sleep, -i = prevent idle sleep
