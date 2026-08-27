@@ -137,7 +137,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-007 — Derived paths (no hardcoded `.cursor/lazy-dev`) + `LAZY_DEV_PRINT_CONTEXT` (RESOLVED 2026-08-27, commit 6df4edd)
 - [x] CHUNK-008 — Prompt/rules dedup (one canonical git policy, one commit-type table) (RESOLVED 2026-08-27, commit b529bd0)
 - [x] CHUNK-009 — Runner-inlined rule injection (deterministic protocol) (RESOLVED 2026-08-27, commit 31b8fc8)
-- [ ] CHUNK-010 — Assigned-story injection into CONTEXT
+- [x] CHUNK-010 — Assigned-story injection into CONTEXT (RESOLVED 2026-08-27, commit pending)
 - [ ] CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens)
 - [ ] CHUNK-012 — Read-only review contract + diff-range context for reviewers
 - [ ] CHUNK-013 — Stuck-story accounting (`attempts` / `blocked` / parked, exit 3)
@@ -863,3 +863,11 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Word counts: before 4195, after 3181 (−24.2%). Grep: full `git push` forbidden-list only in `prompt.md` + one-line CONTEXT ban in `go.sh`; commit-type canonical table only in `prompt.md` (pointers in `agent-loop.mdc`/`quality-gates.mdc`); web-search rule body only in `prompt.md` (one-line pointer in `agent-loop.mdc`). Spot-read: NEVER ASK, ONE story, review-story, and dual-model sections intact.
 - **State left behind:** `main`, clean tree pending commit.
 - **First step for next chunk (CHUNK-009):** Read CHUNK-009 spec; inline `rules/*.mdc` into CONTEXT in `run_iteration` and update `prompt.md` auto-apply paragraph.
+
+### CHUNK-010 — Assigned-story injection into CONTEXT (RESOLVED 2026-08-27 | commit pending)
+- **Did:** `go.sh`: moved `get_next_story_id` before CONTEXT assembly; added empty-id guard (log error, return 1, no agent launch); fetch story title via jq; appended `## Your Assignment` block after inlined rules with id + title. `prompt.md`: Select step now defers to runner-assigned story in Feature Context. Plus `HANDOVER.md` queue flip + this note.
+- **Deviations from spec:** none.
+- **Gotchas:** (1) Assignment block is appended after `# Injected Protocol` — `LAZY_DEV_PRINT_CONTEXT` dump includes it at the end. (2) All-complete runs never call `run_iteration` (`verify_all_stories_complete` in `main` exits 0 first). (3) Empty `next_story_id` returns 1 so `main` logs iteration failure but continues — CHUNK-013 will add blocked-story handling for stuck states.
+- **Verification evidence:** `bash -n go.sh` → OK. Scratch `/tmp/lazydev-chunk010`: PRD with priorities 5/1/3 → `LAZY_DEV_PRINT_CONTEXT=1` + fake agent shows `US-P1 — Priority One Story` in `## Your Assignment`; log `Story: US-P1 → Model: opus-4.6`. Scratch `/tmp/lazydev-chunk010-complete`: all `passes:true` → exit 0, "All stories completed", no Story/Model log, no agent launch.
+- **State left behind:** `main`, clean tree pending commit; assignment injection ready for CHUNK-012 review-type CONTEXT additions.
+- **First step for next chunk (CHUNK-011):** Read CHUNK-011 spec; harden canonical git section in `prompt.md` (no `git add .`, expanded forbiddens) and align CONTEXT git one-liner.

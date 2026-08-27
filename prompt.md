@@ -73,7 +73,7 @@ The loop injects the full protocol into your prompt (see **Injected Protocol** b
 ### Your Loop (Each Iteration)
 
 1. **Load** → Project rules, lazy-dev `rules/*.mdc`, `rules/discovered/`, PRD, progress log
-2. **Select** → Pick **exactly ONE** story where `passes: false` (highest priority first)
+2. **Select** → Work the story assigned in your Feature Context (the runner selects it; do not override)
 3. **Plan → Implement → Verify** → Sub-tasks in progress.txt; build, typecheck, lint, test
 4. **Commit** → Conventional commit format (⚠️ NEVER push!)
 5. **Update** → `passes: true` in PRD, log progress.txt, create patterns in `rules/discovered/`

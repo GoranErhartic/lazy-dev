@@ -1476,6 +1476,20 @@ run_iteration() {
     local LAZY_DEV_PROGRESS_PATH="${LAZY_DEV_REL}/features/$FEATURE_NAME/progress.txt"
     local LAZY_DEV_DISCOVERED_PATH="${LAZY_DEV_REL}/rules/discovered/"
 
+    # Resolve assigned story before building CONTEXT (runner-owned selection)
+    local next_story_id
+    next_story_id=$(get_next_story_id "$PRD_FILE")
+
+    if [ -z "$next_story_id" ]; then
+        log_error "No assignable story found in PRD (all complete, corrupted, or empty). Skipping agent launch."
+        return 1
+    fi
+
+    local next_story_title
+    next_story_title=$(jq -r --arg id "$next_story_id" \
+        '[.userStories[]? | select(.id == $id) | .title] | first // ""' \
+        "$PRD_FILE" 2>/dev/null || true)
+
     # Feature context paths are relative to project root (workspace)
     CONTEXT="<!-- lazy-dev session: ${LAZY_DEV_SESSION_MARKER} -->
 
@@ -1496,7 +1510,13 @@ $PROMPT_CONTENT
 
 # Injected Protocol (canonical source: ${LAZY_DEV_REL}/rules/*.mdc)
 
-$INLINED_RULES"
+$INLINED_RULES
+
+---
+
+## Your Assignment
+
+This iteration you will work EXACTLY one story: ${next_story_id} — ${next_story_title}. Its full definition (description, acceptance criteria, notes) is in the PRD. Do not start any other story."
 
     # Build cursor-agent command with appropriate flags
     # -p / --print: Run in non-interactive (headless) mode
@@ -1525,11 +1545,9 @@ $INLINED_RULES"
     # --workspace points to project root so agent can access the full codebase
     CURSOR_ARGS+=("-p" "--force" "--output-format" "stream-json" "--workspace" "$PROJECT_ROOT")
 
-    # Select appropriate model based on the next story to be processed
+    # Select appropriate model for the assigned story
     # Suffix mapping: *-REVIEW → first review model; *-REVIEW-2 → second review model;
     # per-story "model" field in prd.json overrides type mapping when present
-    local next_story_id
-    next_story_id=$(get_next_story_id "$PRD_FILE")
     local selected_model=""
 
     if [ "${LAZY_DEV_FORCE_CLI_DEFAULT_MODEL:-0}" = "1" ]; then
