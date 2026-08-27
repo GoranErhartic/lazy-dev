@@ -314,6 +314,7 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to ac
          ],
          "priority": 1,
          "passes": false,
+         "attempts": 0,
          "notes": "Follow project rules in .cursor/rules/ folder (if it exists in this project)"
        },
        {
@@ -326,6 +327,7 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to ac
          ],
          "priority": 2,
          "passes": false,
+         "attempts": 0,
          "notes": "Follow project rules in .cursor/rules/ folder (if it exists in this project)"
        },
        {
@@ -343,6 +345,7 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to ac
         ],
         "priority": 997,
         "passes": false,
+        "attempts": 0,
         "notes": "Auto-generated review step (GPT 5.3 Codex). Output findings to <lazy-dev>/features/<feature>/review-gpt.md (substitute actual feature name and lazy-dev path)"
       },
       {
@@ -359,6 +362,7 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to ac
         ],
         "priority": 998,
         "passes": false,
+        "attempts": 0,
         "notes": "Auto-generated review step (Gemini 3 Pro). Output findings to <lazy-dev>/features/<feature>/review-gemini.md (substitute actual feature name and lazy-dev path)"
       },
       {
@@ -376,6 +380,7 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to ac
         ],
         "priority": 999,
         "passes": false,
+        "attempts": 0,
         "notes": "Auto-generated implementation step (Opus 4.6). Read both review-gpt.md and review-gemini.md from feature directory."
       }
     ]
@@ -383,6 +388,8 @@ The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to ac
   ```
    
    **Note:** The `US-REVIEW`, `US-REVIEW-2`, and `US-IMPLEMENT-RECS` stories are **required** in every PRD. Add them with priorities 997, 998, and 999 respectively to ensure they always run last. Each review story outputs findings to its own file (`review-gpt.md` or `review-gemini.md`) for independent analysis, and the implementation story reads both files to synthesize recommendations.
+
+   **Runner-owned fields:** Include `"attempts": 0` on every story (defaults to 0 if omitted). The runner increments `attempts` after failed iterations and sets `"blocked": true` after 3 failures — agents must never set `blocked`.
 
 5. **Generate Initial `progress.txt`:**
    * Create an initial progress file with the template:
@@ -693,6 +700,7 @@ Does this accurately capture what you want? If yes, I'll proceed with generating
       ],
       "priority": 1,
       "passes": false,
+      "attempts": 0,
       "notes": "Follow project rules in .cursor/rules/ folder (if it exists in this project)"
     },
     {
@@ -707,6 +715,7 @@ Does this accurately capture what you want? If yes, I'll proceed with generating
       ],
       "priority": 2,
       "passes": false,
+      "attempts": 0,
       "notes": "UI story - requires browser verification"
     },
     {
@@ -722,6 +731,7 @@ Does this accurately capture what you want? If yes, I'll proceed with generating
       ],
       "priority": 3,
       "passes": false,
+      "attempts": 0,
       "notes": "Follow project rules in .cursor/rules/ folder (if it exists in this project)"
     },
     {
@@ -737,6 +747,7 @@ Does this accurately capture what you want? If yes, I'll proceed with generating
       ],
       "priority": 4,
       "passes": false,
+      "attempts": 0,
       "notes": "Non-goals: No priority-based notifications, no automatic priority assignment. Follow project rules in .cursor/rules/ folder (if it exists in this project)"
     }
   ]

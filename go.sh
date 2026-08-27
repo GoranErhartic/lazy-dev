@@ -167,6 +167,10 @@ CAFFEINATE_PID=""
 # consumed by main's retry loop for the fast-fail decision)
 LAST_ITERATION_DURATION=0
 
+# Story id assigned at the start of the current run_iteration (consumed by main
+# for attempt accounting after each iteration)
+LAST_ASSIGNED_STORY_ID=""
+
 # Timeout for each iteration in seconds (30 minutes default)
 # Override with LAZY_DEV_TIMEOUT environment variable
 ITERATION_TIMEOUT="${LAZY_DEV_TIMEOUT:-1800}"
@@ -880,6 +884,8 @@ log_process_count() {
 # Canonical jq filter fragment: story is incomplete when passes is not strictly true
 # (missing, null, false, string "true", etc.)
 PRD_INCOMPLETE_STORY='select(.passes != true)'
+# Selectable = incomplete and not runner-parked (blocked)
+PRD_SELECTABLE_STORY='select(.passes != true and ((.blocked // false) | not))'
 
 # Get story counts from PRD: returns "completed/total" format
 # Usage: counts=$(get_story_counts "$PRD_FILE")
@@ -935,7 +941,104 @@ get_next_story_id() {
         return
     fi
     
-    jq -r "[.userStories[]? | $PRD_INCOMPLETE_STORY] | sort_by(.priority) | .[0].id // \"\"" "$prd_file" 2>/dev/null || true
+    jq -r "[.userStories[]? | $PRD_SELECTABLE_STORY] | sort_by(.priority) | .[0].id // \"\"" "$prd_file" 2>/dev/null || true
+}
+
+# True when PRD is incomplete but no selectable (non-blocked) story remains
+is_feature_stuck() {
+    local prd_file="$1"
+
+    if verify_all_stories_complete "$prd_file"; then
+        return 1
+    fi
+
+    local next_id
+    next_id=$(get_next_story_id "$prd_file")
+    [ -z "$next_id" ]
+}
+
+# Print STUCK report and exit 3 (all remaining stories are blocked)
+report_stuck_and_exit() {
+    local prd_file="$1"
+
+    echo ""
+    echo "═══════════════════════════════════════════════════════════════"
+    echo "  STUCK: Feature cannot progress — all remaining stories blocked"
+    echo "  Feature: $FEATURE_NAME"
+    echo "═══════════════════════════════════════════════════════════════"
+    echo ""
+    echo "Blocked stories:"
+    jq -r --arg progress "$PROGRESS_FILE" --arg prd "$prd_file" \
+        '.userStories[]? | select(.passes != true and (.blocked // false) == true) |
+        "  - \(.id): \(.title)\n    Notes: \(.notes // "(none)")\n    See: \($progress) and \($prd)"' \
+        "$prd_file" 2>/dev/null || true
+    echo ""
+    echo "Remediation: review notes above, fix blockers, set blocked=false in prd.json, re-run."
+    exit 3
+}
+
+# Record a failed iteration attempt for a story (runner-owned, not agent).
+# Increments attempts; sets blocked=true when attempts reach 3.
+# Usage: record_story_attempt <story-id> <prd-file>
+record_story_attempt() {
+    local story_id="$1"
+    local prd_file="$2"
+
+    local blocked_before blocked_after attempts notes tmp
+    blocked_before=$(jq -r --arg id "$story_id" \
+        '[.userStories[]? | select(.id == $id) | .blocked // false] | first // false' \
+        "$prd_file" 2>/dev/null || echo "false")
+
+    if [ "$blocked_before" = "true" ]; then
+        return 0
+    fi
+
+    tmp=$(mktemp)
+    if ! jq --arg id "$story_id" '
+        .userStories |= map(
+            if .id == $id then
+                .attempts = ((.attempts // 0) + 1)
+                | if .attempts >= 3 then . + {blocked: true} else . end
+            else .
+            end
+        )
+    ' "$prd_file" > "$tmp"; then
+        log_error "Failed to record attempt for story $story_id (PRD jq mutation failed)"
+        rm -f "$tmp"
+        return 1
+    fi
+    mv "$tmp" "$prd_file"
+
+    attempts=$(jq -r --arg id "$story_id" \
+        '[.userStories[]? | select(.id == $id) | .attempts // 0] | first // 0' \
+        "$prd_file" 2>/dev/null || echo "0")
+    blocked_after=$(jq -r --arg id "$story_id" \
+        '[.userStories[]? | select(.id == $id) | .blocked // false] | first // false' \
+        "$prd_file" 2>/dev/null || echo "false")
+
+    log_warn "Story $story_id still incomplete after iteration (attempt $attempts/3)"
+
+    if [ "$blocked_after" = "true" ] && [ "$blocked_before" != "true" ]; then
+        notes=$(jq -r --arg id "$story_id" \
+            '[.userStories[]? | select(.id == $id) | .notes // ""] | first // ""' \
+            "$prd_file" 2>/dev/null || echo "")
+
+        {
+            echo ""
+            echo "## ⛔ STORY PARKED: $story_id"
+            echo "Blocked after 3 failed iterations. Notes: $notes"
+            echo "The runner will skip this story and select the next incomplete story."
+            echo ""
+        } >> "$PROGRESS_FILE"
+
+        log_error "═══════════════════════════════════════════════════════════════"
+        log_error "  STORY PARKED (blocked): $story_id"
+        log_error "  Notes: $notes"
+        log_error "  Progress: $PROGRESS_FILE"
+        log_error "═══════════════════════════════════════════════════════════════"
+    fi
+
+    return 0
 }
 
 # Validate PRD structure at bootstrap (called from verify_setup).
@@ -1482,6 +1585,7 @@ run_iteration() {
     # Reset fast-fail / model-retry inputs (main reads these after the call)
     LAST_ITERATION_DURATION=0
     LAST_ITERATION_USED_EXPLICIT_MODEL=0
+    LAST_ASSIGNED_STORY_ID=""
     
     echo ""
     echo "═══════════════════════════════════════════════════════════════"
@@ -1516,6 +1620,8 @@ run_iteration() {
         log_error "No assignable story found in PRD (all complete, corrupted, or empty). Skipping agent launch."
         return 1
     fi
+
+    LAST_ASSIGNED_STORY_ID="$next_story_id"
 
     local next_story_title
     next_story_title=$(jq -r --arg id "$next_story_id" \
@@ -1808,6 +1914,11 @@ main() {
             exit 1
         fi
         
+        # Stuck: incomplete PRD but every remaining story is blocked
+        if is_feature_stuck "$PRD_FILE"; then
+            report_stuck_and_exit "$PRD_FILE"
+        fi
+
         # Check if all stories are already complete before running iteration
         if verify_all_stories_complete "$PRD_FILE"; then
             local session_end=$(date +%s)
@@ -1863,6 +1974,21 @@ main() {
             # Continue to next iteration anyway - the story might still be incomplete
         fi
         
+        # Record attempt when assigned story is still incomplete and not blocked
+        if [ -n "${LAST_ASSIGNED_STORY_ID:-}" ]; then
+            local story_still_incomplete story_was_blocked
+            story_still_incomplete=$(jq -r --arg id "$LAST_ASSIGNED_STORY_ID" \
+                '[.userStories[]? | select(.id == $id and (.passes != true))] | length' \
+                "$PRD_FILE" 2>/dev/null || echo "0")
+            story_was_blocked=$(jq -r --arg id "$LAST_ASSIGNED_STORY_ID" \
+                '[.userStories[]? | select(.id == $id) | .blocked // false] | first // false' \
+                "$PRD_FILE" 2>/dev/null || echo "false")
+
+            if [ "$story_still_incomplete" -gt 0 ] && [ "$story_was_blocked" != "true" ]; then
+                record_story_attempt "$LAST_ASSIGNED_STORY_ID" "$PRD_FILE"
+            fi
+        fi
+
         # Check completion after iteration
         if verify_all_stories_complete "$PRD_FILE"; then
             local session_end=$(date +%s)
@@ -1875,6 +2001,11 @@ main() {
             echo "  Total time: ${total_min}m ${total_sec}s"
             echo "═══════════════════════════════════════════════════════════════"
             exit 0
+        fi
+
+        # Stuck after attempt recording (last story just parked)
+        if is_feature_stuck "$PRD_FILE"; then
+            report_stuck_and_exit "$PRD_FILE"
         fi
 
         # Silently continue to next iteration

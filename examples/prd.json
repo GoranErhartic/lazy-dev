@@ -15,6 +15,7 @@
       ],
       "priority": 1,
       "passes": false,
+      "attempts": 0,
       "notes": "Follow project rules in .cursor/rules/ folder (if it exists in this project)"
     },
     {
@@ -28,6 +29,7 @@
       ],
       "priority": 2,
       "passes": false,
+      "attempts": 0,
       "notes": "Follow project rules in .cursor/rules/ folder (if it exists in this project)"
     },
     {
@@ -41,6 +43,7 @@
       ],
       "priority": 3,
       "passes": false,
+      "attempts": 0,
       "notes": "Follow project rules in .cursor/rules/ folder (if it exists in this project)"
     },
     {
@@ -57,6 +60,7 @@
       ],
       "priority": 997,
       "passes": false,
+      "attempts": 0,
       "notes": "Output findings to <lazy-dev>/features/<feature>/review-gpt.md (see Feature Context for exact path) - this file will be read by US-IMPLEMENT-RECS"
     },
     {
@@ -73,6 +77,7 @@
       ],
       "priority": 998,
       "passes": false,
+      "attempts": 0,
       "notes": "Output findings to <lazy-dev>/features/<feature>/review-gemini.md (see Feature Context for exact path) - this file will be read by US-IMPLEMENT-RECS"
     },
     {
@@ -90,6 +95,7 @@
       ],
       "priority": 999,
       "passes": false,
+      "attempts": 0,
       "notes": "Read both review-gpt.md and review-gemini.md in the feature directory (paths in Feature Context) to gather all recommendations"
     }
   ]

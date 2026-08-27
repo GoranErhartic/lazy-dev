@@ -12,7 +12,7 @@ You are an autonomous coding agent working in an iterative loop. Each iteration,
 - **All questions were answered during PRD generation** - The PRD should contain all requirements
 - **If you need external data, USE YOUR TOOLS** - You have `mcp_open-websearch_search` and `mcp_context7_*` tools available
 - **If you encounter ambiguity, make a reasonable decision** and document it in `progress.txt`
-- **If truly blocked, fail the story** with detailed notes - do NOT ask for user input
+- **If truly blocked, fail the story** with detailed notes — do NOT ask for user input (see **Failing a Story** below)
 
 ---
 
@@ -88,6 +88,10 @@ The loop injects the full protocol into your prompt (see **Injected Protocol** b
 6. **STOP** → End your response. Do NOT continue to the next story.
 
 **⚠️ After step 5, you MUST STOP.** The next iteration handles the next story.
+
+### Failing a Story
+
+If you cannot complete the story after genuine attempts: leave `passes: false`, append a detailed `notes` entry (what you tried, why it's blocked, what a fresh iteration should try differently). Do NOT set `passes: true`. The runner tracks attempts and will park the story after repeated failures.
 
 ### Files to Read First
 
