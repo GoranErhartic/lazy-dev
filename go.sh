@@ -171,6 +171,11 @@ LAST_ITERATION_DURATION=0
 # for attempt accounting after each iteration)
 LAST_ASSIGNED_STORY_ID=""
 
+# Active-iteration tracking for killed-iteration markers (timeout / interrupt)
+CURRENT_ITERATION=0
+ITERATION_START_EPOCH=0
+LAZY_DEV_ITERATION_ACTIVE=0
+
 # Timeout for each iteration in seconds (30 minutes default)
 # Override with LAZY_DEV_TIMEOUT environment variable
 ITERATION_TIMEOUT="${LAZY_DEV_TIMEOUT:-1800}"
@@ -1041,6 +1046,65 @@ record_story_attempt() {
     return 0
 }
 
+# Return git status --porcelain output, capped at N lines (default 30).
+get_git_porcelain_capped() {
+    local max_lines="${1:-30}"
+    git status --porcelain 2>/dev/null | head -n "$max_lines"
+}
+
+# Append a killed-iteration marker to progress.txt (timeout or interrupt).
+# Usage: append_killed_iteration_marker <iteration> <timeout|interrupt> <duration_s>
+append_killed_iteration_marker() {
+    local iter="$1"
+    local reason="$2"
+    local duration_s="$3"
+    local porcelain
+
+    if [ -z "${PROGRESS_FILE:-}" ] || [ ! -f "$PROGRESS_FILE" ]; then
+        log_warn "Cannot append killed-iteration marker: progress file missing"
+        return 0
+    fi
+
+    porcelain=$(get_git_porcelain_capped 30)
+
+    {
+        echo ""
+        echo "## ⚠️ Iteration $iter was killed ($reason) after ${duration_s}s. Uncommitted changes at kill time:"
+        if [ -n "$porcelain" ]; then
+            echo "$porcelain"
+        else
+            echo "(clean working tree)"
+        fi
+        echo "Next agent: reconcile before planning."
+        echo ""
+    } >> "$PROGRESS_FILE"
+
+    log_warn "Appended killed-iteration marker to progress.txt ($reason, iteration $iter)"
+}
+
+# Build a CONTEXT warning block when the working tree has pre-existing changes.
+# Usage: build_dirty_tree_warning <assigned-story-id>
+build_dirty_tree_warning() {
+    local assigned_story="$1"
+    local porcelain
+
+    porcelain=$(get_git_porcelain_capped 30)
+    if [ -z "$porcelain" ]; then
+        return 0
+    fi
+
+    cat <<EOF
+
+## Working Tree Warning
+
+The working tree has uncommitted changes that predate this iteration:
+\`\`\`
+$porcelain
+\`\`\`
+Review them first — they may be a partially completed ${assigned_story}. Do not blindly commit or discard them.
+EOF
+}
+
 # Validate PRD structure at bootstrap (called from verify_setup).
 # Checks: valid JSON, non-empty userStories array, each story has id/priority/passes.
 # Usage: validate_prd "$PRD_FILE"  (returns 0 on success, 1 on failure)
@@ -1622,6 +1686,9 @@ run_iteration() {
     fi
 
     LAST_ASSIGNED_STORY_ID="$next_story_id"
+    CURRENT_ITERATION=$iteration
+    ITERATION_START_EPOCH=$start_time
+    LAZY_DEV_ITERATION_ACTIVE=0
 
     local next_story_title
     next_story_title=$(jq -r --arg id "$next_story_id" \
@@ -1644,6 +1711,9 @@ Review scope: run \`git diff ${merge_base}..HEAD\` to see all feature changes."
         fi
     fi
 
+    local dirty_tree_block=""
+    dirty_tree_block=$(build_dirty_tree_warning "$next_story_id")
+
     # Feature context paths are relative to project root (workspace)
     CONTEXT="<!-- lazy-dev session: ${LAZY_DEV_SESSION_MARKER} -->
 
@@ -1654,7 +1724,7 @@ Review scope: run \`git diff ${merge_base}..HEAD\` to see all feature changes."
 - PRD: $LAZY_DEV_PRD_PATH
 - Progress: $LAZY_DEV_PROGRESS_PATH
 - Shared discovered patterns: $LAZY_DEV_DISCOVERED_PATH (READ these first - cross-feature learning)
-- Git Branch: $CURRENT_GIT_BRANCH
+- Git Branch: $CURRENT_GIT_BRANCH${dirty_tree_block}
 
 # Git: git push is ABSOLUTELY FORBIDDEN (pre-push hook active). Stage only explicit file paths (no bulk staging). Full git policy is in the prompt below.
 
@@ -1775,6 +1845,7 @@ This iteration you will work EXACTLY one story: ${next_story_id} — ${next_stor
         fi
     ) &
     PIPELINE_PID=$!
+    LAZY_DEV_ITERATION_ACTIVE=1
     log_debug "Pipeline running in subshell (PID: $PIPELINE_PID)"
     log_debug "Iteration timeout: ${ITERATION_TIMEOUT}s (override with LAZY_DEV_TIMEOUT env var)"
     
@@ -1804,7 +1875,10 @@ This iteration you will work EXACTLY one story: ${next_story_id} — ${next_stor
         wait $PIPELINE_PID 2>/dev/null || exit_code=$?
     else
         exit_code=124  # Standard timeout exit code
+        local kill_duration=$(($(date +%s) - start_time))
+        append_killed_iteration_marker "$iteration" "timeout" "$kill_duration"
     fi
+    LAZY_DEV_ITERATION_ACTIVE=0
     PIPELINE_PID=""
     
     # Clean up processes after each iteration to prevent memory buildup
@@ -1841,6 +1915,12 @@ This iteration you will work EXACTLY one story: ${next_story_id} — ${next_stor
 # This is called BEFORE cleanup() to kill children immediately
 handle_interrupt() {
     log_info "Interrupt received - stopping agent..."
+
+    if [ "${LAZY_DEV_ITERATION_ACTIVE:-0}" = "1" ]; then
+        local interrupt_duration=$(($(date +%s) - ITERATION_START_EPOCH))
+        append_killed_iteration_marker "$CURRENT_ITERATION" "interrupt" "$interrupt_duration"
+    fi
+    LAZY_DEV_ITERATION_ACTIVE=0
     
     # Kill pipeline immediately (don't wait for cleanup)
     if [ -n "$PIPELINE_PID" ] && kill -0 "$PIPELINE_PID" 2>/dev/null; then

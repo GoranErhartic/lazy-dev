@@ -141,7 +141,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens) (RESOLVED 2026-08-27, commit f1b4ee6)
 - [x] CHUNK-012 — Read-only review contract + diff-range context for reviewers (RESOLVED 2026-08-27, commit 48fea59)
 - [x] CHUNK-013 — Stuck-story accounting (`attempts` / `blocked` / parked, exit 3) (RESOLVED 2026-08-27, commit 1e7aac9)
-- [ ] CHUNK-014 — Dirty-tree / killed-iteration recovery
+- [x] CHUNK-014 — Dirty-tree / killed-iteration recovery (RESOLVED 2026-08-27, commit pending)
 - [ ] CHUNK-015 — Runner-owned state commits (remove the amend ambiguity)
 - [ ] CHUNK-016 — Runner-enforced quality gate (build/test after each flip)
 - [ ] CHUNK-017 — Concurrency lock (one session per feature)
@@ -879,6 +879,14 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Source harness: `is_review_story` → US-REVIEW/MED-523-REVIEW-2 yes, US-001/US-IMPLEMENT-RECS no. Scratch `/tmp/lazydev-chunk012`: feature branch + 2 commits, PRD next story `US-REVIEW` → `LAZY_DEV_PRINT_CONTEXT=1` shows read-only line + `Review scope: run git diff <sha>..HEAD`. Scratch `/tmp/lazydev-chunk012-impl`: impl-only PRD → no `## Review Scope` block (PASS).
 - **State left behind:** `main`, clean tree after commit `48fea59`.
 - **First step for next chunk (CHUNK-013):** Read CHUNK-013 spec; add `attempts`/`blocked` schema to `examples/prd.json` + `generate-prd.md`, implement `record_story_attempt` and stuck exit 3 in `go.sh`.
+
+### CHUNK-014 — Dirty-tree / killed-iteration recovery (RESOLVED 2026-08-27 | commit pending)
+- **Did:** `go.sh`: added `get_git_porcelain_capped`, `append_killed_iteration_marker`, `build_dirty_tree_warning`; timeout/interrupt paths append kill marker to `progress.txt`; pre-iteration dirty-tree block injected into CONTEXT when `git status --porcelain` is non-empty; globals `CURRENT_ITERATION`/`ITERATION_START_EPOCH`/`LAZY_DEV_ITERATION_ACTIVE` for interrupt handling. `rules/agent-loop.mdc`: Bootstrap step 0 **Reconcile** (git status + log before planning). Plus `HANDOVER.md` queue flip + this note.
+- **Deviations from spec:** none.
+- **Gotchas:** (1) Kill marker is written on every `run_iteration` timeout (including per-retry attempts within one outer iteration) — can produce multiple markers per outer iteration when `LAZY_DEV_FASTFAIL_SECS=0`. (2) Dirty-tree warning lists all porcelain entries, including lazy-dev runner artifacts (e.g. `.last-branch`) — agents should reconcile per the foreign-changes rule. (3) Stray files from a killed agent may land under `LAZY_DEV_REL` (cwd is lazy-dev dir during run) — paths in warnings are relative to project root.
+- **Verification evidence:** `bash -n go.sh` → OK. Source harness: `append_killed_iteration_marker` + `build_dirty_tree_warning` helpers work; warning includes assigned story id. Scratch `.scratch/chunk014-repo`: fake agent writes `stray-from-killed-iter.txt` + `LAZY_DEV_TIMEOUT=3` → progress.txt contains `## ⚠️ Iteration 1 was killed (timeout)` with stray file listed; iteration 2 `LAZY_DEV_PRINT_CONTEXT=1` shows `## Working Tree Warning` with stray file; clean-tree run (`ok.sh` fake agent after `git commit`) → 0× `Working Tree Warning`.
+- **State left behind:** `main`, `.scratch/` untracked (verification artifacts only — not committed).
+- **First step for next chunk (CHUNK-015):** Read CHUNK-015 spec; add `commit_state()` in `go.sh` and call it at end of each iteration in `main` (after attempt recording for now).
 
 ### CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens) (RESOLVED 2026-08-27 | commit f1b4ee6)
 - **Did:** `prompt.md`: added Staging subsection (explicit paths only, NEVER `git add .`/`-A`); expanded forbidden list (push, reset --hard, bulk discards, clean, rebase, branch -D, amend except Final Story Hygiene); added foreign-changes rule. `go.sh`: CONTEXT git one-liner now mentions no bulk staging. Plus `HANDOVER.md` queue flip + this note.

@@ -9,6 +9,7 @@ You are operating in an autonomous agent loop. Each iteration is independent - y
 
 ## Iteration Lifecycle
 
+0. **Reconcile** - Check `git status` and `git log -3`. If the tree is dirty or the last commit looks half-finished, reconcile with `progress.txt` before planning — finish, complete, or note-and-continue. Never silently revert work you did not do.
 1. **Bootstrap** - Load PRD, progress log, discovered patterns, and rules
 2. **Select** - Pick highest priority incomplete story
 3. **Plan** - Break story into sub-tasks before coding
