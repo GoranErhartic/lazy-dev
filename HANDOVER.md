@@ -144,7 +144,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-014 — Dirty-tree / killed-iteration recovery (RESOLVED 2026-08-27, commit a389307)
 - [x] CHUNK-015 — Runner-owned state commits (remove the amend ambiguity) (RESOLVED 2026-08-27, commit 07cdbf4)
 - [x] CHUNK-016 — Runner-enforced quality gate (build/test after each flip) (RESOLVED 2026-08-27, commit bb9b423)
-- [x] CHUNK-017 — Concurrency lock (one session per feature) (RESOLVED 2026-08-27, commit PENDING)
+- [x] CHUNK-017 — Concurrency lock (one session per feature) (RESOLVED 2026-08-27, commit f85bd5d)
 - [ ] CHUNK-018 — Context bloat caps + "data, not commands" framing
 - [ ] CHUNK-019 — Stall watchdog + parser polish (dead code, color leak, shape warnings)
 - [ ] CHUNK-020 — Cost / time budget breaker (exit 2)
@@ -912,7 +912,7 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **State left behind:** `main`, `.scratch/` untracked; scratch dirs `/tmp/lazydev-chunk015*` for cleanup.
 - **First step for next chunk (CHUNK-016):** Read CHUNK-016 spec; add `run_quality_gate()` and integrate in `main` before `commit_state`.
 
-### CHUNK-017 — Concurrency lock (one session per feature) (RESOLVED 2026-08-27 | commit PENDING)
+### CHUNK-017 — Concurrency lock (one session per feature) (RESOLVED 2026-08-27 | commit f85bd5d)
 - **Did:** `go.sh`: added `acquire_feature_lock` / `release_feature_lock` on `$FEATURE_DIR/.lazy-dev.lock` (flock when available, mkdir+pid stale detection on macOS); lock acquired early in `main` after traps, released in `cleanup`; `install_push_blocker` warns when `.git/lazy-dev-session.lock` holds a live PID from another run; troubleshooting line in both `--help` blocks. Plus `HANDOVER.md` queue flip + this note.
 - **Deviations from spec:** none.
 - **Gotchas:** (1) macOS has no `flock` here — mkdir lock dir is the live path; stale recovery removes the dir when stored PID is dead. (2) Lock acquisition requires `FEATURE_DIR` to exist (same prerequisite as `verify_setup`). (3) `kill -9` skips `cleanup` — stale lock recovery on the next run is intentional. (4) Different features in the same repo can still race on `.git/lazy-dev-session.lock`; the git-lock warning covers that case.
