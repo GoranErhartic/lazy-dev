@@ -140,7 +140,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-010 — Assigned-story injection into CONTEXT (RESOLVED 2026-08-27, commit 0f0bb02)
 - [x] CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens) (RESOLVED 2026-08-27, commit f1b4ee6)
 - [x] CHUNK-012 — Read-only review contract + diff-range context for reviewers (RESOLVED 2026-08-27, commit 48fea59)
-- [x] CHUNK-013 — Stuck-story accounting (`attempts` / `blocked` / parked, exit 3) (RESOLVED 2026-08-27, commit PLACEHOLDER)
+- [x] CHUNK-013 — Stuck-story accounting (`attempts` / `blocked` / parked, exit 3) (RESOLVED 2026-08-27, commit 1e7aac9)
 - [ ] CHUNK-014 — Dirty-tree / killed-iteration recovery
 - [ ] CHUNK-015 — Runner-owned state commits (remove the amend ambiguity)
 - [ ] CHUNK-016 — Runner-enforced quality gate (build/test after each flip)
@@ -888,7 +888,7 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **State left behind:** `main`, clean tree pending commit.
 - **First step for next chunk (CHUNK-012):** Read CHUNK-012 spec; add read-only review contract to `prompt.md`, diff-range CONTEXT block in `run_iteration` for review stories, one line in `agent-loop.mdc`.
 
-### CHUNK-013 — Stuck-story accounting (`attempts` / `blocked` / parked, exit 3) (RESOLVED 2026-08-27 | commit PLACEHOLDER)
+### CHUNK-013 — Stuck-story accounting (`attempts` / `blocked` / parked, exit 3) (RESOLVED 2026-08-27 | commit 1e7aac9)
 - **Did:** `go.sh`: added `PRD_SELECTABLE_STORY` predicate, `record_story_attempt`, `is_feature_stuck`, `report_stuck_and_exit` (exit 3); `get_next_story_id` skips blocked stories; `LAST_ASSIGNED_STORY_ID` tracked in `run_iteration`; `main` records attempts after each iteration and checks stuck before/after. `examples/prd.json`, `commands/generate-prd.md`: added `"attempts": 0` to all story templates + runner-owned `blocked` note. `prompt.md`: concrete **Failing a Story** section. Plus `HANDOVER.md` queue flip + this note.
 - **Deviations from spec:** none.
 - **Gotchas:** (1) Attempt is recorded once per outer iteration (not per retry) — retries within the same iteration count as one attempt. (2) `record_story_attempt` runs even when the agent iteration succeeded but left `passes != true` (the common no-flip case). (3) `is_feature_stuck` is checked at loop start and after attempt recording — parking the last story triggers immediate exit 3 on the same iteration. (4) CHUNK-016 will reuse `record_story_attempt` for gate failures.
