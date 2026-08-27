@@ -139,7 +139,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-009 — Runner-inlined rule injection (deterministic protocol) (RESOLVED 2026-08-27, commit 31b8fc8)
 - [x] CHUNK-010 — Assigned-story injection into CONTEXT (RESOLVED 2026-08-27, commit 0f0bb02)
 - [x] CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens) (RESOLVED 2026-08-27, commit f1b4ee6)
-- [ ] CHUNK-012 — Read-only review contract + diff-range context for reviewers
+- [x] CHUNK-012 — Read-only review contract + diff-range context for reviewers (RESOLVED 2026-08-27, commit pending)
 - [ ] CHUNK-013 — Stuck-story accounting (`attempts` / `blocked` / parked, exit 3)
 - [ ] CHUNK-014 — Dirty-tree / killed-iteration recovery
 - [ ] CHUNK-015 — Runner-owned state commits (remove the amend ambiguity)
@@ -871,6 +871,14 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Scratch `/tmp/lazydev-chunk010`: PRD with priorities 5/1/3 → `LAZY_DEV_PRINT_CONTEXT=1` + fake agent shows `US-P1 — Priority One Story` in `## Your Assignment`; log `Story: US-P1 → Model: opus-4.6`. Scratch `/tmp/lazydev-chunk010-complete`: all `passes:true` → exit 0, "All stories completed", no Story/Model log, no agent launch.
 - **State left behind:** `main`, clean tree after commit; assignment injection ready for CHUNK-012 review-type CONTEXT additions.
 - **First step for next chunk (CHUNK-011):** Read CHUNK-011 spec; harden canonical git section in `prompt.md` (no `git add .`, expanded forbiddens) and align CONTEXT git one-liner.
+
+### CHUNK-012 — Read-only review contract + diff-range context for reviewers (RESOLVED 2026-08-27 | commit pending)
+- **Did:** `go.sh`: added `is_review_story` (suffix `*-REVIEW` / `*-REVIEW-2`) and `detect_main_branch` (same main/master logic as `setup_feature_branch`); `run_iteration` appends `## Review Scope` with concrete `git diff <merge-base>..HEAD` for review stories only. `prompt.md`: read-only review contract in Dual-Model section. `rules/agent-loop.mdc`: one-line Scope Discipline entry. Plus `HANDOVER.md` queue flip + this note.
+- **Deviations from spec:** none.
+- **Gotchas:** (1) Read-only contract appears in printed CONTEXT via inlined `prompt.md` + `agent-loop.mdc`; diff-range block is appended only for review stories after `## Your Assignment`. (2) `detect_main_branch` mirrors `setup_feature_branch` — if neither `main` nor `master` exists, no Review Scope block is injected (graceful skip). (3) Merge-base is computed at iteration time on the current HEAD after branch setup/rebase.
+- **Verification evidence:** `bash -n go.sh` → OK. Source harness: `is_review_story` → US-REVIEW/MED-523-REVIEW-2 yes, US-001/US-IMPLEMENT-RECS no. Scratch `/tmp/lazydev-chunk012`: feature branch + 2 commits, PRD next story `US-REVIEW` → `LAZY_DEV_PRINT_CONTEXT=1` shows read-only line + `Review scope: run git diff <sha>..HEAD`. Scratch `/tmp/lazydev-chunk012-impl`: impl-only PRD → no `## Review Scope` block (PASS).
+- **State left behind:** `main`, clean tree pending commit.
+- **First step for next chunk (CHUNK-013):** Read CHUNK-013 spec; add `attempts`/`blocked` schema to `examples/prd.json` + `generate-prd.md`, implement `record_story_attempt` and stuck exit 3 in `go.sh`.
 
 ### CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens) (RESOLVED 2026-08-27 | commit f1b4ee6)
 - **Did:** `prompt.md`: added Staging subsection (explicit paths only, NEVER `git add .`/`-A`); expanded forbidden list (push, reset --hard, bulk discards, clean, rebase, branch -D, amend except Final Story Hygiene); added foreign-changes rule. `go.sh`: CONTEXT git one-liner now mentions no bulk staging. Plus `HANDOVER.md` queue flip + this note.

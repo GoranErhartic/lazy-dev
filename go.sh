@@ -1051,6 +1051,38 @@ resolve_model_for_story() {
     get_model_for_story "$story_id"
 }
 
+# Returns 0 if story_id is a code-review story (*-REVIEW or *-REVIEW-2)
+# Usage: is_review_story "$story_id" && ...
+is_review_story() {
+    local story_id="$1"
+
+    case "$story_id" in
+        *-REVIEW-2|*-REVIEW)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Detect the repository's main branch name (main or master)
+# Usage: main_branch=$(detect_main_branch)
+detect_main_branch() {
+    local main_branch="main"
+
+    if ! git show-ref --verify --quiet refs/heads/main; then
+        if git show-ref --verify --quiet refs/heads/master; then
+            main_branch="master"
+        else
+            echo ""
+            return 1
+        fi
+    fi
+
+    echo "$main_branch"
+}
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # GIT SAFETY: BLOCK ALL PUSH OPERATIONS
@@ -1490,6 +1522,22 @@ run_iteration() {
         '[.userStories[]? | select(.id == $id) | .title] | first // ""' \
         "$PRD_FILE" 2>/dev/null || true)
 
+    local review_scope_block=""
+    if is_review_story "$next_story_id"; then
+        local main_branch merge_base
+        main_branch=$(detect_main_branch)
+        if [ -n "$main_branch" ]; then
+            merge_base=$(git merge-base "$main_branch" HEAD 2>/dev/null || true)
+            if [ -n "$merge_base" ]; then
+                review_scope_block="
+
+## Review Scope
+
+Review scope: run \`git diff ${merge_base}..HEAD\` to see all feature changes."
+            fi
+        fi
+    fi
+
     # Feature context paths are relative to project root (workspace)
     CONTEXT="<!-- lazy-dev session: ${LAZY_DEV_SESSION_MARKER} -->
 
@@ -1516,7 +1564,7 @@ $INLINED_RULES
 
 ## Your Assignment
 
-This iteration you will work EXACTLY one story: ${next_story_id} — ${next_story_title}. Its full definition (description, acceptance criteria, notes) is in the PRD. Do not start any other story."
+This iteration you will work EXACTLY one story: ${next_story_id} — ${next_story_title}. Its full definition (description, acceptance criteria, notes) is in the PRD. Do not start any other story.${review_scope_block}"
 
     # Build cursor-agent command with appropriate flags
     # -p / --print: Run in non-interactive (headless) mode

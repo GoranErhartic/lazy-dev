@@ -89,6 +89,7 @@ This ensures all changes from the final iteration are in a single atomic commit.
 
 ## Scope Discipline
 
+- **Review stories are read-only with respect to source code** — do not modify source files; write only the review file and lazy-dev state files
 - **One story per iteration** - Don't start multiple stories
 - **Complete before moving** - Finish current story before picking next
 - **Minimal changes** - Only modify what's needed for the story

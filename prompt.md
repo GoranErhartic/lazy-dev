@@ -164,6 +164,8 @@ The lazy-dev loop uses **different AI models** for different story types to maxi
 
 Story IDs may be Jira-prefixed (e.g. `MED-523-REVIEW`); the loop selects models by **suffix**, not the literal `US-*` id.
 
+**Review stories are read-only with respect to source code.** You must not modify any source file. Your only writes: the review file (`review-gpt.md` / `review-gemini.md`) and the lazy-dev state files. Commit the review file only.
+
 ### Code Review Output Files
 
 Each review story MUST output findings to an independent file:
