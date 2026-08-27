@@ -147,7 +147,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-017 — Concurrency lock (one session per feature) (RESOLVED 2026-08-27, commit f85bd5d)
 - [x] CHUNK-018 — Context bloat caps + "data, not commands" framing (RESOLVED 2026-08-27, commit 34fc7b2)
 - [x] CHUNK-019 — Stall watchdog + parser polish (dead code, color leak, shape warnings) (RESOLVED 2026-08-27, commit aeffb94)
-- [ ] CHUNK-020 — Cost / time budget breaker (exit 2)
+- [x] CHUNK-020 — Cost / time budget breaker (exit 2) (RESOLVED 2026-08-27, commit pending)
 - [ ] CHUNK-021 — Branch-name source of truth (PRD `branchName` wins)
 - [ ] CHUNK-022 — Safe resume semantics (rebase opt-in, stash-pop re-verify)
 - [ ] CHUNK-023 — CLI surface polish (help text, naming, `printf`)
@@ -943,3 +943,11 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Scratch `/tmp/lazydev-chunk016-fail` (npm `test: exit 1` + flip fake agent, `--max-iterations 1`) → gate runs build+test, test fails, `passes:false`, `attempts:1`, `## 🚫 Runner quality gate FAILED` in progress.txt, loud QUALITY GATE FAILED banner. `/tmp/lazydev-chunk016-pass` (`test: exit 0`) → `[SUCCESS] Quality gate passed (npm)`, `passes:true`, exit 0 all-complete. `/tmp/lazydev-chunk016-skip` (no package.json) → `Quality gate skipped (no recognized toolchain)`, flip stands, exit 0.
 - **State left behind:** `main`, `.scratch/` untracked; scratch dirs `/tmp/lazydev-chunk016-*` for cleanup.
 - **First step for next chunk (CHUNK-017):** Read CHUNK-017 spec; add exclusive feature lock (`$FEATURE_DIR/.lazy-dev.lock`) early in `main`, release in `cleanup`.
+
+### CHUNK-020 — Cost / time budget breaker (exit 2) (RESOLVED 2026-08-27 | commit pending)
+- **Did:** `go.sh` only: `parse_agent_output` appends `iteration=N duration_s=N cost=N|unknown` lines to `$FEATURE_DIR/.session-stats` on each `result` event (cost from `.total_cost_usd // .cost_usd // .cost`); exported `LAZY_DEV_CURRENT_ITERATION` + `LAZY_DEV_SESSION_STATS_FILE` from `run_iteration`; added `load_session_stats_totals`, `is_session_budget_exceeded`, `report_budget_exceeded_and_exit` (loud log + `commit_state` + exit 2); budget check in `main` before each iteration; `LAZY_DEV_MAX_COST` / `LAZY_DEV_MAX_MINUTES` in both `--help` blocks. Plus `HANDOVER.md` queue flip + this note.
+- **Deviations from spec:** none.
+- **Gotchas:** (1) Budget time sums `duration_s` from stats lines (from result `duration_ms`), not wall-clock — fake agents can report high `duration_ms` without sleeping 2 min. (2) Cost check skipped when every line has `cost=unknown`; partial known costs still trigger when sum exceeds limit. (3) Budget check runs at loop start (before iteration N), so iteration 1 stats are checked before iteration 2 — matches “after iteration 1, exit 2” for `LAZY_DEV_MAX_MINUTES=1` + 125s reported duration. (4) `.session-stats` is under the feature dir and is committed by `commit_state`.
+- **Verification evidence:** `bash -n go.sh` → OK. Source harness: `parse_agent_output` pipe with `duration_ms=42000`, `total_cost_usd=1.25` → `iteration=3 duration_s=42 cost=1.25`. Scratch `/tmp/lazydev-chunk020-cost`: `LAZY_DEV_MAX_COST=0.10`, cost fake agent (0.07/iter) ×2 → exit **2**, `Cost limit: $0.10 exceeded`, stats `0.07+0.07`. Scratch `/tmp/lazydev-chunk020`: `LAZY_DEV_MAX_MINUTES=1`, slow fake (5×1s ticks + `duration_ms=125000`) → exit **2**, `Time limit: 1m exceeded`, `Cumulative duration: 2m 5s (125s)`, state commit present.
+- **State left behind:** `main`, `.scratch/` untracked; scratch dirs `/tmp/lazydev-chunk020*` for cleanup.
+- **First step for next chunk (CHUNK-021):** Read CHUNK-021 spec; make `setup_feature_branch` use PRD `branchName` as source of truth.

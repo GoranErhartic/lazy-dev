@@ -69,6 +69,8 @@ while [[ "$1" == -* ]]; do
             echo "  LAZY_DEV_MODEL_REVIEW=<id>   First review story model (default: gpt-5.3-codex)"
             echo "  LAZY_DEV_MODEL_REVIEW2=<id>  Second review story model (default: gemini-3-pro)"
             echo "  LAZY_DEV_GATE_TIMEOUT=<s>    Per-gate build/test timeout in seconds (default: 600)"
+            echo "  LAZY_DEV_MAX_COST=<usd>      Stop when cumulative session cost exceeds this (decimal USD)"
+            echo "  LAZY_DEV_MAX_MINUTES=<n>     Stop when cumulative session duration exceeds this (minutes)"
             echo ""
             echo "Troubleshooting:"
             echo "  Stale feature lock after a crash: rm -rf features/<feature>/.lazy-dev.lock"
@@ -115,6 +117,8 @@ if [ -z "$1" ]; then
     echo "  LAZY_DEV_MODEL_REVIEW=<id>   First review story model (default: gpt-5.3-codex)"
     echo "  LAZY_DEV_MODEL_REVIEW2=<id>  Second review story model (default: gemini-3-pro)"
     echo "  LAZY_DEV_GATE_TIMEOUT=<s>    Per-gate build/test timeout in seconds (default: 600)"
+    echo "  LAZY_DEV_MAX_COST=<usd>      Stop when cumulative session cost exceeds this (decimal USD)"
+    echo "  LAZY_DEV_MAX_MINUTES=<n>     Stop when cumulative session duration exceeds this (minutes)"
     echo ""
     echo "Troubleshooting:"
     echo "  Stale feature lock after a crash: rm -rf features/<feature>/.lazy-dev.lock"
@@ -154,6 +158,7 @@ PROGRESS_FILE="$FEATURE_DIR/progress.txt"
 PROMPT_FILE="$SCRIPT_DIR/prompt.md"
 ARCHIVE_DIR="$FEATURE_DIR/archive"
 LAST_BRANCH_FILE="$FEATURE_DIR/.last-branch"
+SESSION_STATS_FILE="$FEATURE_DIR/.session-stats"
 # Shared discovered patterns directory (cross-feature learning)
 DISCOVERED_DIR="$SCRIPT_DIR/rules/discovered"
 
@@ -645,6 +650,19 @@ parse_agent_output() {
                 fi
                 duration_s=$((duration_ms / 1000))
                 
+                local cost_raw cost_val iter_num stats_file
+                cost_raw=$(safe_jq '.total_cost_usd // .cost_usd // .cost // empty' "$line")
+                cost_val="unknown"
+                if [ -n "$cost_raw" ] && [ "$cost_raw" != "null" ]; then
+                    cost_val="$cost_raw"
+                fi
+                iter_num="${LAZY_DEV_CURRENT_ITERATION:-0}"
+                stats_file="${LAZY_DEV_SESSION_STATS_FILE:-}"
+                if [ -n "$stats_file" ]; then
+                    printf 'iteration=%s duration_s=%s cost=%s\n' \
+                        "$iter_num" "$duration_s" "$cost_val" >> "$stats_file"
+                fi
+
                 if [ "$is_error" = "true" ]; then
                     result_failed=1
                     print_line "${RED}[RESULT]${NC} ${RED}Failed${NC} in ${duration_s}s"
@@ -1404,6 +1422,87 @@ commit_state() {
     fi
     log_success "Lazy-dev state committed"
     return 0
+}
+
+# Load cumulative totals from SESSION_STATS_FILE (one line per iteration:
+# iteration=N duration_s=N cost=N|unknown).
+load_session_stats_totals() {
+    SESSION_STATS_TOTAL_SECONDS=0
+    SESSION_STATS_TOTAL_COST="0"
+    SESSION_STATS_KNOWN_COSTS=0
+    SESSION_STATS_LINE_COUNT=0
+
+    if [ ! -f "$SESSION_STATS_FILE" ]; then
+        return 0
+    fi
+
+    local line cost_part
+    while IFS= read -r line; do
+        [[ "$line" =~ ^iteration= ]] || continue
+        SESSION_STATS_LINE_COUNT=$((SESSION_STATS_LINE_COUNT + 1))
+        if [[ "$line" =~ duration_s=([0-9]+) ]]; then
+            SESSION_STATS_TOTAL_SECONDS=$((SESSION_STATS_TOTAL_SECONDS + BASH_REMATCH[1]))
+        fi
+        if [[ "$line" =~ cost=([^[:space:]]+) ]]; then
+            cost_part="${BASH_REMATCH[1]}"
+            if [ "$cost_part" != "unknown" ]; then
+                SESSION_STATS_TOTAL_COST=$(awk "BEGIN {printf \"%.6f\", $SESSION_STATS_TOTAL_COST + $cost_part}")
+                SESSION_STATS_KNOWN_COSTS=$((SESSION_STATS_KNOWN_COSTS + 1))
+            fi
+        fi
+    done < "$SESSION_STATS_FILE"
+}
+
+# Return 0 when a configured budget limit is exceeded (and stats exist).
+is_session_budget_exceeded() {
+    load_session_stats_totals
+
+    if [ "${SESSION_STATS_LINE_COUNT:-0}" -eq 0 ]; then
+        return 1
+    fi
+
+    if [ -n "${LAZY_DEV_MAX_MINUTES:-}" ]; then
+        local max_seconds=$((LAZY_DEV_MAX_MINUTES * 60))
+        if [ "${SESSION_STATS_TOTAL_SECONDS:-0}" -gt "$max_seconds" ]; then
+            SESSION_BUDGET_EXCEEDED_REASON="time"
+            return 0
+        fi
+    fi
+
+    if [ -n "${LAZY_DEV_MAX_COST:-}" ]; then
+        if [ "${SESSION_STATS_KNOWN_COSTS:-0}" -gt 0 ]; then
+            if awk "BEGIN {exit ($SESSION_STATS_TOTAL_COST > $LAZY_DEV_MAX_COST) ? 0 : 1}"; then
+                SESSION_BUDGET_EXCEEDED_REASON="cost"
+                return 0
+            fi
+        fi
+    fi
+
+    return 1
+}
+
+# Loud stop when session budget is exceeded; saves state and exits 2.
+report_budget_exceeded_and_exit() {
+    load_session_stats_totals
+    local total_min=$((SESSION_STATS_TOTAL_SECONDS / 60))
+    local total_sec=$((SESSION_STATS_TOTAL_SECONDS % 60))
+
+    echo ""
+    log_error "═══════════════════════════════════════════════════════════════"
+    log_error "  BUDGET EXCEEDED — stopping session (exit 2)"
+    if [ "${SESSION_BUDGET_EXCEEDED_REASON:-}" = "time" ]; then
+        log_error "  Time limit: ${LAZY_DEV_MAX_MINUTES}m exceeded"
+        log_error "  Cumulative duration: ${total_min}m ${total_sec}s (${SESSION_STATS_TOTAL_SECONDS}s)"
+    elif [ "${SESSION_BUDGET_EXCEEDED_REASON:-}" = "cost" ]; then
+        log_error "  Cost limit: \$${LAZY_DEV_MAX_COST} exceeded"
+        log_error "  Cumulative cost: \$${SESSION_STATS_TOTAL_COST} (${SESSION_STATS_KNOWN_COSTS} iteration(s) with known cost)"
+    fi
+    log_error "  Session stats: $SESSION_STATS_FILE"
+    log_error "═══════════════════════════════════════════════════════════════"
+    echo ""
+
+    commit_state
+    exit 2
 }
 
 # Return git status --porcelain output, capped at N lines (default 30).
@@ -2392,6 +2491,8 @@ This iteration you will work EXACTLY one story: ${next_story_id} — ${next_stor
     # processes try to write to terminal, stopping the entire pipeline
     # Export VERBOSE so subshell's parse_agent_output can access it
     export VERBOSE
+    export LAZY_DEV_CURRENT_ITERATION="$iteration"
+    export LAZY_DEV_SESSION_STATS_FILE="$SESSION_STATS_FILE"
     (
         # Failure detection: make the subshell exit non-zero if ANY pipeline
         # stage fails (notably the agent itself). Without pipefail the status
@@ -2594,6 +2695,11 @@ main() {
         # Stuck: incomplete PRD but every remaining story is blocked
         if is_feature_stuck "$PRD_FILE"; then
             report_stuck_and_exit "$PRD_FILE"
+        fi
+
+        # Session budget breaker (cost / cumulative duration from .session-stats)
+        if is_session_budget_exceeded; then
+            report_budget_exceeded_and_exit
         fi
 
         # Check if all stories are already complete before running iteration
