@@ -39,6 +39,7 @@ Each iteration must leave clear context for the next agent:
 ### In prd.json
 - Update `passes: true` when story complete
 - Add notes for context
+- You update the file; the runner commits it after each iteration
 
 ### In rules/discovered/
 When you discover a reusable pattern (used 3+ times, gotcha, convention):
@@ -75,18 +76,9 @@ You are an **autonomous agent** — never ask the user for clarification, data, 
 
 See **Commit Message Conventions** in the main prompt for the canonical commit-type table (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`) and Jira/story-id format.
 
-## Final Story Commit Hygiene
+## Lazy-Dev State Commits (Runner-Owned)
 
-After completing the FINAL story (US-IMPLEMENT-RECS):
-1. Commit your code changes (using the commit conventions above)
-2. Update prd.json (set passes: true) and progress.txt
-3. Amend the commit to include state files:
-   ```bash
-   git add <lazy-dev>/features/<feature>/prd.json <lazy-dev>/features/<feature>/progress.txt
-   git commit --amend --no-edit
-   ```
-
-This ensures all changes from the final iteration are in a single atomic commit.
+The loop runner commits lazy-dev state files automatically after each iteration. **Never commit anything under the lazy-dev directory.** Only commit your source-code changes.
 
 ## Scope Discipline
 

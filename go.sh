@@ -1046,6 +1046,29 @@ record_story_attempt() {
     return 0
 }
 
+# Commit lazy-dev state files after each iteration (runner-owned; agents never commit lazy-dev).
+# Usage: commit_state [story-id]
+commit_state() {
+    local story_id="${1:-${LAST_ASSIGNED_STORY_ID:-unknown}}"
+
+    if ! git -C "$PROJECT_ROOT" status --porcelain -- "$LAZY_DEV_REL" 2>/dev/null | grep -q .; then
+        log_debug "No lazy-dev state changes to commit"
+        return 0
+    fi
+
+    log_info "Committing lazy-dev state (feature: $FEATURE_NAME, story: $story_id)"
+    if ! git -C "$PROJECT_ROOT" add "$LAZY_DEV_REL"; then
+        log_error "Failed to stage lazy-dev state files"
+        return 1
+    fi
+    if ! git -C "$PROJECT_ROOT" commit -m "chore: lazy-dev state ($FEATURE_NAME, $story_id)"; then
+        log_error "Failed to commit lazy-dev state files"
+        return 1
+    fi
+    log_success "Lazy-dev state committed"
+    return 0
+}
+
 # Return git status --porcelain output, capped at N lines (default 30).
 get_git_porcelain_capped() {
     local max_lines="${1:-30}"
@@ -2068,6 +2091,8 @@ main() {
                 record_story_attempt "$LAST_ASSIGNED_STORY_ID" "$PRD_FILE"
             fi
         fi
+
+        commit_state
 
         # Check completion after iteration
         if verify_all_stories_complete "$PRD_FILE"; then

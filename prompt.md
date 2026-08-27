@@ -62,7 +62,7 @@ Stage only the files you changed this iteration: `git add <file1> <file2> ...`. 
 - `git clean -f` / `git clean -fd` — deletes untracked files
 - `git rebase` (any form) — rewrites history
 - `git branch -D` — force-deletes branches
-- `git commit --amend` — **except** the documented Final Story Commit Hygiene case below
+- `git commit --amend` — rewrites history
 
 **Foreign changes:** If the working tree contains changes you did not make, do not commit or revert them — note them in `progress.txt` and proceed with only your own files.
 
@@ -168,7 +168,7 @@ The lazy-dev loop uses **different AI models** for different story types to maxi
 
 Story IDs may be Jira-prefixed (e.g. `MED-523-REVIEW`); the loop selects models by **suffix**, not the literal `US-*` id.
 
-**Review stories are read-only with respect to source code.** You must not modify any source file. Your only writes: the review file (`review-gpt.md` / `review-gemini.md`) and the lazy-dev state files. Commit the review file only.
+**Review stories are read-only with respect to source code.** You must not modify any source file. Your only writes: the review file (`review-gpt.md` / `review-gemini.md`) and the lazy-dev state files. Do not commit lazy-dev files — the runner commits them after each iteration.
 
 ### Code Review Output Files
 
@@ -240,17 +240,9 @@ When processing US-IMPLEMENT-RECS:
 4. **Implement** all critical and high-priority fixes
 5. **Document** which recommendations were implemented and any that were deferred
 
-### Commit Hygiene: Amend for Uncommitted State Files
+### Lazy-Dev State Commits (Runner-Owned)
 
-After completing the FINAL story (US-IMPLEMENT-RECS), if you commit your code changes but then update prd.json and progress.txt, these state files will be left uncommitted.
-
-**You MUST amend the commit to include them:**
-```bash
-git add <lazy-dev>/features/<feature>/prd.json <lazy-dev>/features/<feature>/progress.txt
-git commit --amend --no-edit
-```
-
-This ensures all changes from the final iteration are in a single atomic commit.
+The loop runner commits lazy-dev state files automatically after each iteration. **Never commit anything under the lazy-dev directory.** Only commit your source-code changes.
 
 ---
 
