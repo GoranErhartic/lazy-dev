@@ -72,20 +72,7 @@ Additional requirements for stories that change user interface:
 
 ## Commit Message Format
 
-```
-<type>: <story-id> - <description>
-```
-
-### Types
-
-| Type | Use For |
-|------|---------|
-| `feat` | New feature |
-| `fix` | Bug fix |
-| `refactor` | Code restructuring |
-| `docs` | Documentation only |
-| `test` | Adding/updating tests |
-| `chore` | Maintenance tasks |
+Use the canonical commit-type table in the main prompt (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`). Format: `<type>: (<jira-id>) description` or `<type>: <story-id> - description`.
 
 ## Failure Recovery
 

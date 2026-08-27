@@ -61,82 +61,18 @@ The loop will automatically detect completion and stop. You do NOT need to outpu
 
 If you encounter a blocker:
 
-1. **Use available tools first**:
-   - `mcp_open-websearch_search` - Search the web for information
-   - `mcp_context7_resolve-library-id` - Resolve library name to Context7 ID
-   - `mcp_context7_query-docs` - Query library documentation
-   - `codebase_search` - Find code patterns
-   - `grep` - Search for specific strings
+1. **Use available tools first** — data gathering: see the Web Search section of the main prompt; also `codebase_search`, `grep`, `mcp_context7_*`
 2. **Document it** in progress.txt with details
 3. **Add to story notes** in prd.json
 4. **End normally** - next iteration may have fresh approach
 
 ### ⚠️ NEVER Ask for User Input
 
-You are an **autonomous agent**. The following are FORBIDDEN:
-
-- ❌ "Please provide the data..."
-- ❌ "Which option would you prefer?"
-- ❌ "I need clarification on..."
-- ❌ "🛑 BLOCKER: Cannot complete without user input"
-
-Instead:
-
-- ✅ Use `mcp_open-websearch_search` to search the web for information (like Google/Bing search)
-- ✅ Use `mcp_context7_query-docs` for library documentation
-- ✅ Make a reasonable decision and document it
-- ✅ If truly blocked after trying all tools, mark story as failed with notes
-
-**⚠️ NEVER use direct API calls (CoinGecko, CoinMarketCap, etc.) - ONLY use web search**
-
-All ambiguity should have been resolved during the PRD generation phase. If the PRD is unclear, make a reasonable interpretation and document your decision.
+You are an **autonomous agent** — never ask the user for clarification, data, or choices. Use tools, make a reasonable decision and document it, or mark the story failed with notes. All ambiguity should have been resolved during PRD generation.
 
 ## Commit Message Conventions
 
-All commits MUST follow the conventional commit format:
-
-### Commit Types
-- **`feat:`** - New feature or enhancement
-- **`fix:`** - Bug fix
-- **`chore:`** - Maintenance, refactoring, or non-functional changes
-
-### Format
-
-**With Jira task (preferred - when `jiraTaskId` is present in prd.json):**
-```
-feat: (MED-123) Story title describing the change
-fix: (MED-123) Fix validation bug in form component
-chore: (MED-123) Code review and cleanup
-```
-
-**Without Jira task (fallback only):**
-```
-feat: US-001 - Story title describing the change
-fix: US-003 - Fix validation bug in form component
-chore: US-REVIEW - Code review and cleanup
-```
-
-### Choosing the Commit Type
-
-| Story Type | Commit Type |
-|------------|-------------|
-| New functionality, features | `feat:` |
-| Bug fixes, error corrections | `fix:` |
-| US-REVIEW, US-IMPLEMENT-RECS | `chore:` |
-| Refactoring, cleanup, docs | `chore:` |
-
-### Example Commits
-
-```bash
-# With Jira task MED-123 (preferred)
-git commit -m "feat: (MED-123) Add priority field to database"
-git commit -m "fix: (MED-123) Fix validation bug in form"
-git commit -m "chore: (MED-123) Code review and cleanup"
-
-# Without Jira (fallback - use story ID)
-git commit -m "feat: US-001 - Add priority field to database"
-git commit -m "chore: US-REVIEW - Code review and cleanup"
-```
+See **Commit Message Conventions** in the main prompt for the canonical commit-type table (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`) and Jira/story-id format.
 
 ## Final Story Commit Hygiene
 
@@ -145,7 +81,7 @@ After completing the FINAL story (US-IMPLEMENT-RECS):
 2. Update prd.json (set passes: true) and progress.txt
 3. Amend the commit to include state files:
    ```bash
-   git add .cursor/lazy-dev/features/<feature>/prd.json .cursor/lazy-dev/features/<feature>/progress.txt
+   git add <lazy-dev>/features/<feature>/prd.json <lazy-dev>/features/<feature>/progress.txt
    git commit --amend --no-edit
    ```
 

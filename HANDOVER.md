@@ -135,7 +135,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-005 — Model selection by story type (Jira IDs) + per-story `model` field (RESOLVED 2026-08-27, commit 26c6655)
 - [x] CHUNK-006 — Model env overrides + fallback to CLI default model (RESOLVED 2026-08-27, commit 6f6e08f)
 - [x] CHUNK-007 — Derived paths (no hardcoded `.cursor/lazy-dev`) + `LAZY_DEV_PRINT_CONTEXT` (RESOLVED 2026-08-27, commit 6df4edd)
-- [ ] CHUNK-008 — Prompt/rules dedup (one canonical git policy, one commit-type table)
+- [x] CHUNK-008 — Prompt/rules dedup (one canonical git policy, one commit-type table) (RESOLVED 2026-08-27, commit TBD)
 - [ ] CHUNK-009 — Runner-inlined rule injection (deterministic protocol)
 - [ ] CHUNK-010 — Assigned-story injection into CONTEXT
 - [ ] CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens)
@@ -847,3 +847,11 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Grep: zero `.cursor/lazy-dev` or `~/.cursor` in `prompt.md`/`generate-prd.md` agent-facing paths. Scratch **A** (`.cursor/lazy-dev`): `Lazy-dev directory: .cursor/lazy-dev`; `ls` OK for PRD, progress, discovered. Scratch **B** (`tools/lazy-dev`): `Lazy-dev directory: tools/lazy-dev`; all three paths exist from repo root. Source harness from lazy-dev repo: `LAZY_DEV_REL=.`. `LAZY_DEV_PRINT_CONTEXT=1` prints delimited block with correct paths.
 - **State left behind:** `main`, clean tree pending commit; `LAZY_DEV_REL` + `LAZY_DEV_PRINT_CONTEXT` ready for CHUNK-009/010/018 verification.
 - **First step for next chunk (CHUNK-008):** Read CHUNK-008 spec; dedup git policy (shrink CONTEXT git block) and commit-type tables across `prompt.md` + `rules/*.mdc`.
+
+### CHUNK-008 — Prompt/rules dedup (one canonical git policy, one commit-type table) (RESOLVED 2026-08-27 | commit TBD)
+- **Did:** Shrunk `go.sh` CONTEXT git block to one-line push ban + pointer to prompt. Canonical git policy and full commit-type table (`feat`/`fix`/`refactor`/`test`/`docs`/`chore`) live in `prompt.md`; `agent-loop.mdc` and `quality-gates.mdc` now point to it. Compressed web-search rule to one compact section in `prompt.md`; `agent-loop.mdc` uses one-line pointer. Trimmed redundant project-rules tables and Quick Reference in `prompt.md`. Files: `go.sh`, `prompt.md`, `rules/agent-loop.mdc`, `rules/quality-gates.mdc`, `HANDOVER.md`.
+- **Deviations from spec:** Combined word count dropped 24.2% (4195→3181), slightly under the 25–30% target — protected sections (one-story, review-story, never-ask-user rules) kept intact; additional compression was limited to non-canonical boilerplate (project-rules tables, Quick Reference).
+- **Gotchas:** (1) `go.sh` header comment (line 13) still mentions git push — not agent-facing CONTEXT; grep audit excludes it. (2) CHUNK-011 will expand the canonical git section and remove remaining `git add .` references — CONTEXT is already minimal. (3) CHUNK-009 will replace "rules auto-apply" wording when rules are inlined.
+- **Verification evidence:** `bash -n go.sh` → OK. Word counts: before 4195, after 3181 (−24.2%). Grep: full `git push` forbidden-list only in `prompt.md` + one-line CONTEXT ban in `go.sh`; commit-type canonical table only in `prompt.md` (pointers in `agent-loop.mdc`/`quality-gates.mdc`); web-search rule body only in `prompt.md` (one-line pointer in `agent-loop.mdc`). Spot-read: NEVER ASK, ONE story, review-story, and dual-model sections intact.
+- **State left behind:** `main`, clean tree pending commit.
+- **First step for next chunk (CHUNK-009):** Read CHUNK-009 spec; inline `rules/*.mdc` into CONTEXT in `run_iteration` and update `prompt.md` auto-apply paragraph.

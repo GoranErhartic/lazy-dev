@@ -16,113 +16,30 @@ You are an autonomous coding agent working in an iterative loop. Each iteration,
 
 ---
 
-## 🚫 CRITICAL: WEB SEARCH ONLY - NO DIRECT API CALLS
+## Web Search and External Data
 
-**When gathering external data (prices, news, statistics), you MUST use web search. NEVER call APIs directly.**
+When gathering external data (prices, news, statistics), use **web search only** — never direct API calls or HTTP clients (`fetch`, `axios`, `curl`, CoinGecko, CoinMarketCap, etc.).
 
 | ✅ CORRECT | ❌ WRONG |
 |------------|----------|
-| `mcp_open-websearch_search` with query "bitcoin price january 2026" | Calling CoinGecko API |
-| `mcp_open-websearch_search` with query "crypto market cap" | Calling CoinMarketCap API |
-| `mcp_open-websearch_search` with query "ethereum news this week" | Any HTTP request to an API endpoint |
-| Extract data from web search results | Using fetch, axios, curl, or HTTP clients |
+| `mcp_open-websearch_search` with query "bitcoin price january 2026", then extract data from results | Calling CoinGecko API or any HTTP endpoint directly |
 
-**The `mcp_open-websearch_search` tool searches the web like Google/Bing. Use it to find information on websites, then extract the data you need from the search results.**
+For library documentation, use `mcp_context7_resolve-library-id` then `mcp_context7_query-docs`. For codebase patterns, use `codebase_search` and `grep`. Document sources in `progress.txt`.
 
-### Available Tools for Data Gathering
-You have these tools available - USE THEM instead of asking the user:
-
-| Tool | When to Use |
-|------|-------------|
-| `mcp_open-websearch_search` | Search the web for current data, prices, market info, news events |
-| `mcp_context7_resolve-library-id` | Resolve package name to Context7 library ID (call first before query-docs) |
-| `mcp_context7_query-docs` | Query library documentation and code examples |
-| `codebase_search` | Find patterns and implementations in the codebase |
-| `grep` | Search for specific strings in files |
-
-### Example: Research Task
-**WRONG approach:**
-```
-I cannot access the data. Please provide the data...
-🛑 BLOCKER: Cannot complete without user input
-```
-
-**ALSO WRONG approach:**
-```
-I'll call the CoinGecko API directly to get prices...
-[Tries to use HTTP requests or API calls]
-```
-
-**CORRECT approach:**
-```
-I'll use mcp_open-websearch_search to search the web for market data...
-[Uses mcp_open-websearch_search tool with query "bitcoin price january 2026"]
-[Gets results from web search, extracts data from search results]
-[Implements story with gathered data]
-```
-
-### ⚠️ IMPORTANT: Web Search vs API Calls
-- **ALWAYS use `mcp_open-websearch_search`** - This searches the web like a search engine
-- **NEVER use direct API calls** - Do not try to call CoinGecko API, CoinMarketCap API, or any other API endpoints directly
-- **NEVER use HTTP requests** - Do not use fetch, axios, curl, or any HTTP client
-- The MCP tool searches the web and returns search results - use those results as your data source
-
-### When a Story Requires External Data
-1. **Use `mcp_open-websearch_search`** to find current information (search the web for data)
-2. **Use `mcp_context7_query-docs`** for library/framework documentation (call `mcp_context7_resolve-library-id` first)
-3. **Document sources** in progress.txt for traceability
-4. **Complete the story** with real data
-
-### If Tools Fail
-If mcp_open-websearch_search fails (rate limits, connection issues):
-1. **Retry with different search terms**
-2. **Try alternative sources**
-3. **If still blocked after 3 attempts**, mark story as failed with detailed notes
-4. **NEVER ask the user for data** - the next iteration may succeed
+**If web search fails:** retry with different terms (up to 3 attempts), then mark the story failed with detailed notes — never ask the user for data.
 
 ---
 
-## 🔒 MANDATORY: Follow Project Development Rules
+## Follow Project Development Rules
 
-**BEFORE implementing any code, you MUST read and follow the rules in `.cursor/rules/` (if it exists in this project).**
+**Before implementing any code, read `.cursor/rules/` (if it exists in this project):**
 
-### Rule Discovery Protocol
+1. **`agent-behavior.mdc`** — how to approach tasks
+2. **Pattern rules** — `patterns/architecture.mdc`, `api-design.mdc`, `error-handling.mdc`, `security.mdc`, etc., matching your task type
+3. **Language rules** — `languages/react/*.mdc`, `languages/csharp/*.mdc`, `languages/java/*.mdc`, etc., for the code you're writing
+4. **Development workflow** — `development/tdd-planning.mdc`, `development/code-implementation.mdc`
 
-1. **Read `agent-behavior.mdc`** first — it defines how you should approach tasks
-2. **Read pattern rules** based on task type:
-
-| Task Type | Rule to Read |
-|-----------|--------------|
-| Architecture decisions | `.cursor/rules/patterns/architecture.mdc` |
-| API endpoints | `.cursor/rules/patterns/api-design.mdc` |
-| Error handling | `.cursor/rules/patterns/error-handling.mdc` |
-| Security concerns | `.cursor/rules/patterns/security.mdc` |
-| Input validation | `.cursor/rules/patterns/input-sanitization.mdc` |
-| CQRS/Commands/Queries | `.cursor/rules/patterns/cqrs.mdc` |
-| Writing tests | `.cursor/rules/patterns/testing.mdc` |
-
-3. **Read language-specific rules** for the code you're writing:
-
-| Language | Rules Directory |
-|----------|----------------|
-| React/TypeScript | `.cursor/rules/languages/react/*.mdc` |
-| C# / .NET | `.cursor/rules/languages/csharp/*.mdc` |
-| Java | `.cursor/rules/languages/java/*.mdc` |
-
-4. **Read development workflow rules**:
-   - `.cursor/rules/development/tdd-planning.mdc` — TDD planning requirements
-   - `.cursor/rules/development/code-implementation.mdc` — Implementation checklists
-
-### Key Rules for This Project
-
-For React/TypeScript work, always read:
-- `.cursor/rules/languages/react/code-quality.mdc` — TypeScript strict mode, React 19 idioms
-- `.cursor/rules/languages/react/components.mdc` — Component patterns
-- `.cursor/rules/languages/react/styling.mdc` — Tailwind CSS patterns
-- `.cursor/rules/languages/react/accessibility.mdc` — a11y patterns
-- `.cursor/rules/languages/react/testing.mdc` — Testing with Vitest
-
-**Failure to follow these rules produces substandard work. Read them before coding.**
+**Failure to follow project rules produces substandard work. Read them before coding.**
 
 ---
 
@@ -141,22 +58,13 @@ For React/TypeScript work, always read:
 - `git push --force` — **NEVER**
 - Any variation of push command — **BLOCKED**
 
-**WHY:** All work stays local until manually reviewed. A pre-push hook blocks any push attempts. Violating this policy will cause the command to fail.
+**WHY:** Work stays local until manually reviewed; a pre-push hook blocks all push attempts.
 
 ---
 
 ## How It Works
 
-The rules in `rules/` define your behavior (they auto-apply):
-
-| Rule | Purpose |
-|------|---------|
-| `agent-loop.mdc` | Iteration lifecycle, state management, handoffs |
-| `task-breakdown.mdc` | Story decomposition into sub-tasks |
-| `quality-gates.mdc` | Verification checklists, Definition of Done |
-| `pattern-discovery.mdc` | Capturing reusable patterns |
-
-Read these rules to understand the full protocol.
+The rules in `rules/` define your behavior (they auto-apply): `agent-loop.mdc` (lifecycle/handoffs), `task-breakdown.mdc` (decomposition), `quality-gates.mdc` (Definition of Done), `pattern-discovery.mdc` (reusable patterns). Read them to understand the full protocol.
 
 ---
 
@@ -164,47 +72,37 @@ Read these rules to understand the full protocol.
 
 ### Your Loop (Each Iteration)
 
-1. **Load Rules** → Read `.cursor/rules/agent-behavior.mdc` (if it exists in this project) and applicable language/pattern rules
-2. **Load Discovered Patterns** → Read ALL `.mdc` files in `rules/discovered/` (cross-feature learning)
-3. **Load Context** → Read PRD, progress log for this feature
-4. **Select** → Pick **exactly ONE** story where `passes: false` (highest priority first)
-5. **Plan** → Break into 2-15 sub-tasks, document in progress.txt
-6. **Implement** → Complete sub-tasks following project rules, verify each one
-7. **Verify** → Build, typecheck, lint, test (all must pass)
-8. **Commit** → Use conventional commit format (see below) (⚠️ NEVER push!)
-9. **Update** → Set `passes: true` in PRD, log to progress.txt, create patterns in `rules/discovered/`
-10. **STOP** → End your response. Do NOT continue to the next story.
+1. **Load** → Project rules, lazy-dev `rules/*.mdc`, `rules/discovered/`, PRD, progress log
+2. **Select** → Pick **exactly ONE** story where `passes: false` (highest priority first)
+3. **Plan → Implement → Verify** → Sub-tasks in progress.txt; build, typecheck, lint, test
+4. **Commit** → Conventional commit format (⚠️ NEVER push!)
+5. **Update** → `passes: true` in PRD, log progress.txt, create patterns in `rules/discovered/`
+6. **STOP** → End your response. Do NOT continue to the next story.
 
-**⚠️ After step 9, you MUST STOP. Do not look at the next story. Do not start another story. The next iteration will handle it.**
-
-The loop runner monitors the PRD state automatically and will stop when all stories have `passes: true`.
+**⚠️ After step 5, you MUST STOP.** The next iteration handles the next story.
 
 ### Files to Read First
 
-**If `prd.json` fails to parse:** restore it from the last commit (`git checkout -- <path-to-prd.json>`), verify it parses (e.g. `jq . <path-to-prd.json>`), and only then proceed with story selection.
+**If `prd.json` fails to parse:** restore from last commit (`git checkout -- <path-to-prd.json>`), verify with `jq`, then proceed.
 
-1. **`.cursor/rules/agent-behavior.mdc`** — Project development rules (MANDATORY, if it exists in this project)
-2. **`.cursor/rules/languages/react/*.mdc`** — React/TypeScript patterns (for frontend work, if it exists in this project)
-3. **`rules/*.mdc`** in the lazy-dev directory — Lazy-dev agent loop rules (agent-loop, task-breakdown, quality-gates, pattern-discovery; exact lazy-dev path is in your Feature Context)
-4. **`rules/discovered/*.mdc`** in the lazy-dev directory — Shared patterns from all previous features (cross-feature learning)
-5. Feature's `prd.json` — What to work on (path in your Feature Context)
-6. Feature's `progress.txt` — Patterns and context from previous iterations (path in your Feature Context)
+Read: project `.cursor/rules/` (if present), lazy-dev `rules/*.mdc` + `rules/discovered/` (paths in Feature Context), feature `prd.json` and `progress.txt`.
 
 ### Files to Update After
 
-1. Feature's `prd.json` — Mark story as `passes: true`
-2. Feature's `progress.txt` — Log what you did and learned
-3. **`rules/discovered/`** — Create `.mdc` files for reusable patterns (use `{feature}-{area}.mdc` naming)
+Feature `prd.json` (`passes: true`), `progress.txt` (what you did), and `rules/discovered/{feature}-{area}.mdc` for reusable patterns.
 
 ### Commit Message Conventions
 
-All commits MUST follow the conventional commit format:
+All commits MUST follow conventional commit format. **This is the canonical commit-type table** — `agent-loop.mdc` and `quality-gates.mdc` reference it.
 
 | Commit Type | When to Use |
 |-------------|-------------|
 | `feat:` | New features, enhancements |
 | `fix:` | Bug fixes |
-| `chore:` | Reviews, refactoring, cleanup |
+| `refactor:` | Code restructuring without behavior change |
+| `test:` | Adding or updating tests |
+| `docs:` | Documentation only |
+| `chore:` | Reviews, maintenance, lazy-dev state updates |
 
 **Format (check prd.json for `jiraTaskId`):**
 - With Jira (preferred): `feat: (MED-123) Story title`
@@ -212,12 +110,8 @@ All commits MUST follow the conventional commit format:
 
 **Examples:**
 ```bash
-# With Jira task (preferred - use Jira ID only)
 git commit -m "feat: (MED-123) Add priority field to database"
-git commit -m "chore: (MED-123) Code review and cleanup"
-
-# Without Jira task (fallback - use story ID)
-git commit -m "feat: US-001 - Add priority field to database"
+git commit -m "fix: US-003 - Fix validation bug"
 git commit -m "chore: US-REVIEW - Code review and cleanup"
 ```
 
@@ -228,7 +122,7 @@ git commit -m "chore: US-REVIEW - Code review and cleanup"
 - **Keep CI green** — Never commit broken code
 - **Leave context** — Your progress.txt entries help the next agent
 - **NEVER push** — Only commit locally; pushing is strictly blocked
-- **Use conventional commits** — Always use `feat:`, `fix:`, or `chore:` prefix
+- **Use conventional commits** — See the commit-type table above (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`)
 
 ### ⚠️ CRITICAL: Review Stories Are First-Class Stories
 

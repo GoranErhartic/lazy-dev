@@ -1459,8 +1459,7 @@ run_iteration() {
     local LAZY_DEV_PROGRESS_PATH="${LAZY_DEV_REL}/features/$FEATURE_NAME/progress.txt"
     local LAZY_DEV_DISCOVERED_PATH="${LAZY_DEV_REL}/rules/discovered/"
 
-    # Add feature-specific context with STRICT git policy
-    # All paths are relative to project root (workspace)
+    # Feature context paths are relative to project root (workspace)
     CONTEXT="<!-- lazy-dev session: ${LAZY_DEV_SESSION_MARKER} -->
 
 # Feature Context
@@ -1472,23 +1471,7 @@ run_iteration() {
 - Shared discovered patterns: $LAZY_DEV_DISCOVERED_PATH (READ these first - cross-feature learning)
 - Git Branch: $CURRENT_GIT_BRANCH
 
-# ⚠️ CRITICAL GIT POLICY - READ CAREFULLY ⚠️
-
-## ALLOWED Git Operations:
-- git add <files>
-- git commit -m \"message\"
-- git status
-- git diff
-- git log
-
-## ❌ STRICTLY FORBIDDEN - NEVER USE:
-- git push (ABSOLUTELY FORBIDDEN - DO NOT USE UNDER ANY CIRCUMSTANCES)
-- git push origin <anything>
-- git push --force
-- Any variation of push command
-
-The pre-push hook will block any push attempts. All work stays local.
-When you need to save progress, use: git add . && git commit -m \"...\"
+# Git: git push is ABSOLUTELY FORBIDDEN (pre-push hook active). Full git policy is in the prompt below.
 
 $PROMPT_CONTENT"
 
