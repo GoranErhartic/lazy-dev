@@ -68,6 +68,7 @@ while [[ "$1" == -* ]]; do
             echo "  LAZY_DEV_MODEL_IMPL=<id>     Implementation story model (default: opus-4.6)"
             echo "  LAZY_DEV_MODEL_REVIEW=<id>   First review story model (default: gpt-5.3-codex)"
             echo "  LAZY_DEV_MODEL_REVIEW2=<id>  Second review story model (default: gemini-3-pro)"
+            echo "  LAZY_DEV_GATE_TIMEOUT=<s>    Per-gate build/test timeout in seconds (default: 600)"
             echo ""
             echo "To create a new feature:"
             echo "  mkdir -p features/<feature-name>"
@@ -110,6 +111,7 @@ if [ -z "$1" ]; then
     echo "  LAZY_DEV_MODEL_IMPL=<id>     Implementation story model (default: opus-4.6)"
     echo "  LAZY_DEV_MODEL_REVIEW=<id>   First review story model (default: gpt-5.3-codex)"
     echo "  LAZY_DEV_MODEL_REVIEW2=<id>  Second review story model (default: gemini-3-pro)"
+    echo "  LAZY_DEV_GATE_TIMEOUT=<s>    Per-gate build/test timeout in seconds (default: 600)"
     echo ""
     echo "To create a new feature:"
     echo "  mkdir -p features/<feature-name>"
@@ -211,6 +213,12 @@ LAZY_DEV_FAKE_AGENT="${LAZY_DEV_FAKE_AGENT:-}"
 LAZY_DEV_MODEL_IMPL="${LAZY_DEV_MODEL_IMPL:-opus-4.6}"
 LAZY_DEV_MODEL_REVIEW="${LAZY_DEV_MODEL_REVIEW:-gpt-5.3-codex}"
 LAZY_DEV_MODEL_REVIEW2="${LAZY_DEV_MODEL_REVIEW2:-gemini-3-pro}"
+
+# Per-gate build/test timeout (seconds); consumed by run_quality_gate
+LAZY_DEV_GATE_TIMEOUT="${LAZY_DEV_GATE_TIMEOUT:-600}"
+
+# First ~20 lines of the last failed quality gate run (for progress.txt notes)
+LAST_GATE_OUTPUT=""
 
 # Set to 1 by main's fast-fail retry path to omit --model (CLI default)
 LAZY_DEV_FORCE_CLI_DEFAULT_MODEL=0
@@ -1044,6 +1052,307 @@ record_story_attempt() {
     fi
 
     return 0
+}
+
+# Run a command with a timeout. Returns the command's exit code, or 124 on timeout.
+# Usage: run_with_timeout <seconds> <output_file> -- <command...>
+run_with_timeout() {
+    local timeout_secs="$1"
+    local output_file="$2"
+    shift 2
+    if [ "${1:-}" = "--" ]; then
+        shift
+    fi
+
+    (
+        "$@"
+    ) > "$output_file" 2>&1 &
+    local pid=$!
+    local start
+    start=$(date +%s)
+
+    while kill -0 "$pid" 2>/dev/null; do
+        local elapsed=$(($(date +%s) - start))
+        if [ "$elapsed" -ge "$timeout_secs" ]; then
+            kill -TERM "$pid" 2>/dev/null || true
+            sleep 1
+            kill -9 "$pid" 2>/dev/null || true
+            echo "Quality gate timed out after ${timeout_secs}s" >> "$output_file"
+            return 124
+        fi
+        sleep 0.5
+    done
+
+    wait "$pid"
+    return $?
+}
+
+# Detect project toolchain for the runner quality gate.
+# Echoes: npm|pnpm|yarn|cargo|go|skip-java|empty (unknown)
+detect_quality_gate_toolchain() {
+    local root="$PROJECT_ROOT"
+
+    if [ -f "$root/pnpm-lock.yaml" ]; then
+        echo "pnpm"
+        return 0
+    fi
+    if [ -f "$root/yarn.lock" ]; then
+        echo "yarn"
+        return 0
+    fi
+    if [ -f "$root/package-lock.json" ]; then
+        echo "npm"
+        return 0
+    fi
+    if [ -f "$root/package.json" ]; then
+        echo "npm"
+        return 0
+    fi
+    if [ -f "$root/Cargo.toml" ]; then
+        echo "cargo"
+        return 0
+    fi
+    if [ -f "$root/go.mod" ]; then
+        echo "go"
+        return 0
+    fi
+    if [ -f "$root/pom.xml" ]; then
+        echo "skip-java"
+        return 0
+    fi
+    if compgen -G "$root/build.gradle*" > /dev/null 2>&1; then
+        echo "skip-java"
+        return 0
+    fi
+
+    echo ""
+    return 0
+}
+
+# Return 0 if package.json defines a non-empty script name.
+js_script_exists() {
+    local script_name="$1"
+    jq -e --arg s "$script_name" '.scripts[$s] // "" | length > 0' \
+        "$PROJECT_ROOT/package.json" >/dev/null 2>&1
+}
+
+# Run build then test for a JS package manager toolchain.
+run_js_quality_gate() {
+    local mgr="$1"
+    local timeout_secs="$2"
+    local output_file="$3"
+    local script_name step_out run_rc
+
+    for script_name in build test; do
+        if ! js_script_exists "$script_name"; then
+            log_info "Quality gate: $script_name skipped (no script in package.json)"
+            continue
+        fi
+
+        step_out=$(mktemp)
+        log_info "Quality gate: running $mgr run $script_name (timeout ${timeout_secs}s)..."
+
+        run_rc=0
+        case "$mgr" in
+            npm)
+                run_with_timeout "$timeout_secs" "$step_out" -- bash -c \
+                    'cd "$1" && npm run "$2"' _ "$PROJECT_ROOT" "$script_name" || run_rc=$?
+                ;;
+            pnpm)
+                run_with_timeout "$timeout_secs" "$step_out" -- bash -c \
+                    'cd "$1" && pnpm run "$2"' _ "$PROJECT_ROOT" "$script_name" || run_rc=$?
+                ;;
+            yarn)
+                run_with_timeout "$timeout_secs" "$step_out" -- bash -c \
+                    'cd "$1" && yarn run "$2"' _ "$PROJECT_ROOT" "$script_name" || run_rc=$?
+                ;;
+            *)
+                log_warn "Quality gate: unknown JS toolchain '$mgr'"
+                rm -f "$step_out"
+                return 1
+                ;;
+        esac
+
+        cat "$step_out" >> "$output_file"
+        rm -f "$step_out"
+
+        if [ "$run_rc" -ne 0 ]; then
+            log_error "Quality gate failed: $mgr run $script_name (exit $run_rc)"
+            return "$run_rc"
+        fi
+        log_info "Quality gate: $script_name passed"
+    done
+
+    return 0
+}
+
+# Run cargo build + cargo test.
+run_cargo_quality_gate() {
+    local timeout_secs="$1"
+    local output_file="$2"
+    local step_out run_rc
+
+    for step_out_cmd in "cargo build" "cargo test"; do
+        step_out=$(mktemp)
+        log_info "Quality gate: running $step_out_cmd (timeout ${timeout_secs}s)..."
+        run_rc=0
+        run_with_timeout "$timeout_secs" "$step_out" -- bash -c \
+            'cd "$1" && '"$step_out_cmd" _ "$PROJECT_ROOT" || run_rc=$?
+        cat "$step_out" >> "$output_file"
+        rm -f "$step_out"
+        if [ "$run_rc" -ne 0 ]; then
+            log_error "Quality gate failed: $step_out_cmd (exit $run_rc)"
+            return "$run_rc"
+        fi
+        log_info "Quality gate: $step_out_cmd passed"
+    done
+    return 0
+}
+
+# Run go build + go test.
+run_go_quality_gate() {
+    local timeout_secs="$1"
+    local output_file="$2"
+    local step_out run_rc
+
+    for step_out_cmd in "go build ./..." "go test ./..."; do
+        step_out=$(mktemp)
+        log_info "Quality gate: running $step_out_cmd (timeout ${timeout_secs}s)..."
+        run_rc=0
+        run_with_timeout "$timeout_secs" "$step_out" -- bash -c \
+            'cd "$1" && '"$step_out_cmd" _ "$PROJECT_ROOT" || run_rc=$?
+        cat "$step_out" >> "$output_file"
+        rm -f "$step_out"
+        if [ "$run_rc" -ne 0 ]; then
+            log_error "Quality gate failed: $step_out_cmd (exit $run_rc)"
+            return "$run_rc"
+        fi
+        log_info "Quality gate: $step_out_cmd passed"
+    done
+    return 0
+}
+
+# Runner-enforced build/test gate after a story flip. Returns 0 on pass or skip.
+run_quality_gate() {
+    local gate_timeout="${LAZY_DEV_GATE_TIMEOUT:-600}"
+    local output_file toolchain failed=0
+
+    output_file=$(mktemp)
+    LAST_GATE_OUTPUT=""
+    toolchain=$(detect_quality_gate_toolchain)
+
+    if [ -z "$toolchain" ]; then
+        log_info "Quality gate skipped (no recognized toolchain)"
+        rm -f "$output_file"
+        return 0
+    fi
+
+    if [ "$toolchain" = "skip-java" ]; then
+        log_info "Quality gate skipped (Java/Gradle project — no built-in gate)"
+        rm -f "$output_file"
+        return 0
+    fi
+
+    case "$toolchain" in
+        npm|pnpm|yarn)
+            run_js_quality_gate "$toolchain" "$gate_timeout" "$output_file" || failed=1
+            ;;
+        cargo)
+            run_cargo_quality_gate "$gate_timeout" "$output_file" || failed=1
+            ;;
+        go)
+            run_go_quality_gate "$gate_timeout" "$output_file" || failed=1
+            ;;
+        *)
+            log_info "Quality gate skipped (unsupported toolchain: $toolchain)"
+            rm -f "$output_file"
+            return 0
+            ;;
+    esac
+
+    if [ "$failed" -eq 0 ]; then
+        log_success "Quality gate passed ($toolchain)"
+        if [ "$VERBOSE" = "1" ] && [ -s "$output_file" ]; then
+            log_debug "Quality gate output (last 5 lines):"
+            tail -n 5 "$output_file" | while IFS= read -r line; do
+                log_debug "  $line"
+            done
+        fi
+        rm -f "$output_file"
+        return 0
+    fi
+
+    LAST_GATE_OUTPUT=$(head -n 20 "$output_file")
+    rm -f "$output_file"
+    return 1
+}
+
+# Revert a story flip (runner-owned; used when the quality gate fails).
+# Usage: revert_story_passes <story-id> <prd-file>
+revert_story_passes() {
+    local story_id="$1"
+    local prd_file="$2"
+    local tmp
+
+    tmp=$(mktemp)
+    if ! jq --arg id "$story_id" '
+        .userStories |= map(
+            if .id == $id then .passes = false
+            else . end
+        )
+    ' "$prd_file" > "$tmp"; then
+        log_error "Failed to revert passes for story $story_id (PRD jq mutation failed)"
+        rm -f "$tmp"
+        return 1
+    fi
+    mv "$tmp" "$prd_file"
+    return 0
+}
+
+# If the assigned story flipped to passes:true this iteration, run the quality gate.
+# On failure: revert flip, record attempt, append progress note. Returns 1 if gate failed.
+# Usage: handle_quality_gate_for_flip <story-id> <passes-before>
+handle_quality_gate_for_flip() {
+    local story_id="$1"
+    local passes_before="$2"
+    local passes_now excerpt
+
+    if [ -z "$story_id" ] || [ "$passes_before" = "true" ]; then
+        return 0
+    fi
+
+    passes_now=$(jq -r --arg id "$story_id" \
+        '[.userStories[]? | select(.id == $id) | .passes] | first // false' \
+        "$PRD_FILE" 2>/dev/null || echo "false")
+
+    if [ "$passes_now" != "true" ]; then
+        return 0
+    fi
+
+    log_info "Story $story_id marked complete — running runner quality gate..."
+
+    if run_quality_gate; then
+        return 0
+    fi
+
+    revert_story_passes "$story_id" "$PRD_FILE"
+    record_story_attempt "$story_id" "$PRD_FILE"
+
+    excerpt="${LAST_GATE_OUTPUT:-(no output captured)}"
+    {
+        echo ""
+        echo "## 🚫 Runner quality gate FAILED for $story_id: $excerpt"
+        echo "Next agent: fix the gate failures before re-marking this story."
+        echo ""
+    } >> "$PROGRESS_FILE"
+
+    log_error "═══════════════════════════════════════════════════════════════"
+    log_error "  QUALITY GATE FAILED for story: $story_id"
+    log_error "  Flip reverted (passes: false); attempt recorded"
+    log_error "  See progress.txt for output excerpt"
+    log_error "═══════════════════════════════════════════════════════════════"
+
+    return 1
 }
 
 # Commit lazy-dev state files after each iteration (runner-owned; agents never commit lazy-dev).
@@ -2036,6 +2345,16 @@ main() {
             exit 0
         fi
         
+        # Capture assigned story state before iteration (for quality-gate flip detection)
+        local assigned_passes_before assigned_before_id gate_recorded_attempt=0
+        assigned_before_id=$(get_next_story_id "$PRD_FILE")
+        assigned_passes_before="false"
+        if [ -n "$assigned_before_id" ]; then
+            assigned_passes_before=$(jq -r --arg id "$assigned_before_id" \
+                '[.userStories[]? | select(.id == $id) | .passes // false] | first // false' \
+                "$PRD_FILE" 2>/dev/null || echo "false")
+        fi
+
         # Run iteration with retry logic
         local retry_count=0
         local iteration_success=0
@@ -2076,9 +2395,16 @@ main() {
             log_error "Iteration $iteration failed after $retry_count attempt(s)"
             # Continue to next iteration anyway - the story might still be incomplete
         fi
+
+        # Runner quality gate when the assigned story flipped to passes:true this iteration
+        if [ -n "${LAST_ASSIGNED_STORY_ID:-}" ]; then
+            if ! handle_quality_gate_for_flip "$LAST_ASSIGNED_STORY_ID" "$assigned_passes_before"; then
+                gate_recorded_attempt=1
+            fi
+        fi
         
         # Record attempt when assigned story is still incomplete and not blocked
-        if [ -n "${LAST_ASSIGNED_STORY_ID:-}" ]; then
+        if [ "$gate_recorded_attempt" -eq 0 ] && [ -n "${LAST_ASSIGNED_STORY_ID:-}" ]; then
             local story_still_incomplete story_was_blocked
             story_still_incomplete=$(jq -r --arg id "$LAST_ASSIGNED_STORY_ID" \
                 '[.userStories[]? | select(.id == $id and (.passes != true))] | length' \
