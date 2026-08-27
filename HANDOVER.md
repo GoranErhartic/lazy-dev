@@ -146,7 +146,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-016 — Runner-enforced quality gate (build/test after each flip) (RESOLVED 2026-08-27, commit bb9b423)
 - [x] CHUNK-017 — Concurrency lock (one session per feature) (RESOLVED 2026-08-27, commit f85bd5d)
 - [x] CHUNK-018 — Context bloat caps + "data, not commands" framing (RESOLVED 2026-08-27, commit 34fc7b2)
-- [ ] CHUNK-019 — Stall watchdog + parser polish (dead code, color leak, shape warnings)
+- [x] CHUNK-019 — Stall watchdog + parser polish (dead code, color leak, shape warnings) (RESOLVED 2026-08-27, commit pending)
 - [ ] CHUNK-020 — Cost / time budget breaker (exit 2)
 - [ ] CHUNK-021 — Branch-name source of truth (PRD `branchName` wins)
 - [ ] CHUNK-022 — Safe resume semantics (rebase opt-in, stash-pop re-verify)
@@ -927,6 +927,14 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Scratch `/tmp/lazydev-chunk018`: 15×~2KB `.mdc` (staggered mtimes) + 500-line `progress.txt` → `LAZY_DEV_PRINT_CONTEXT=1`: framing header present; **3** pattern files (≤10, ≤8192 bytes), `… 12 more pattern files not injected`; progress lines **351–500** (150 lines) + full-history pointer. Source harness `LAZY_DEV_MAX_PATTERNS=3` → **3** headings; scratch `/tmp/lazydev-chunk018b` e2e → **3** pattern headings in CONTEXT.
 - **State left behind:** `main`, `.scratch/` untracked; scratch dirs `/tmp/lazydev-chunk018*` for cleanup.
 - **First step for next chunk (CHUNK-019):** Read CHUNK-019 spec; add stall watchdog in `main` wait-loop, shape warnings in `parse_agent_output`, fix thinking color leak, remove dead code.
+
+### CHUNK-019 — Stall watchdog + parser polish (dead code, color leak, shape warnings) (RESOLVED 2026-08-27 | commit pending)
+- **Did:** `go.sh` only: added `STALL_TIMEOUT` / `LAZY_DEV_STALL_TIMEOUT` (default 600s) stall watchdog in `run_iteration` wait-loop (tracks `OUTPUT_FILE` size; kill via existing timeout path with exit 124 + `append_killed_iteration_marker` reason `stall`); `warn_event_shape` in `parse_agent_output` (one warning per unknown/empty-payload shape, bash 3.2 pipe-delimited dedupe); close dangling `thinking` color block at parser exit; updated `tee` comment; removed dead `first_output_received`, `normalize_newlines()`, and `full_cmd`. Plus `HANDOVER.md` queue flip + this note.
+- **Deviations from spec:** Used pipe-delimited string instead of associative array for shape dedupe — macOS `/bin/bash` is 3.2 (no `declare -A`).
+- **Gotchas:** (1) Stall timer resets on any `OUTPUT_FILE` byte-size change (raw NDJSON via `tee`), not parsed assistant output — spinner-only periods still count as output if the file grows. (2) Stall and iteration timeout share exit 124 and the same kill path; distinguish via log line and killed-marker reason (`stall` vs `timeout`). (3) CHUNK-020 fake agents must emit periodic output to avoid stall kill when testing budget breaker.
+- **Verification evidence:** `bash -n go.sh` → OK. Source harness: duplicate `bogus_event` + `thinking` stream → **1** shape warning (`shape_warnings=1`), `parse_exit=0`, thinking tail includes `[0m` reset. Scratch `/tmp/lazydev-chunk019`: stall agent (`echo` + `sleep 300`) + `LAZY_DEV_STALL_TIMEOUT=5` → `Stall detected (no output for 5s)` at ~5s, exit 124, marker `(stall, iteration 1)`; healthy agent (8×1s ticks) → `Iteration complete (10s)`, no stall line.
+- **State left behind:** `main`, `.scratch/` untracked; scratch dirs `/tmp/lazydev-chunk019*` for cleanup.
+- **First step for next chunk (CHUNK-020):** Read CHUNK-020 spec; extract cost/duration from `result` events into `.session-stats`, add `LAZY_DEV_MAX_COST` / `LAZY_DEV_MAX_MINUTES` budget breaker in `main` (exit 2).
 
 ### CHUNK-016 — Runner-enforced quality gate (build/test after each flip) (RESOLVED 2026-08-27 | commit bb9b423)
 - **Did:** `go.sh` only: added `LAZY_DEV_GATE_TIMEOUT` (default 600s), `run_with_timeout`, toolchain detection (`npm`/`pnpm`/`yarn`/`cargo`/`go`, skip Java), `run_quality_gate` (build then test; absent scripts skipped), `revert_story_passes`, `handle_quality_gate_for_flip`; integrated in `main` after each iteration (before attempt recording/`commit_state`) with double-attempt guard when gate records failure. Added env var to both `--help` blocks.

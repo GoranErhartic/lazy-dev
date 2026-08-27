@@ -192,6 +192,10 @@ LAZY_DEV_FEATURE_LOCK_DIR=""
 # Override with LAZY_DEV_TIMEOUT environment variable
 ITERATION_TIMEOUT="${LAZY_DEV_TIMEOUT:-1800}"
 
+# Stall watchdog: kill if OUTPUT_FILE size is unchanged for this many seconds
+# (default 600). Override with LAZY_DEV_STALL_TIMEOUT.
+STALL_TIMEOUT="${LAZY_DEV_STALL_TIMEOUT:-600}"
+
 # Maximum iterations to prevent infinite loops (default 20)
 # Precedence: --max-iterations flag (parsed above) > LAZY_DEV_MAX_ITERATIONS
 # env var > 20. Guarded so the flag value is not clobbered by this line.
@@ -362,18 +366,6 @@ strip_ansi() {
     fi
 }
 
-# Normalize newlines in text: ensure every \n is preceded by \r for proper cursor reset
-# This fixes multi-line content where newlines don't reset cursor to column 0
-normalize_newlines() {
-    # Replace all \n with \r\n (but avoid \r\r\n if \r already present)
-    if command -v perl &> /dev/null; then
-        perl -pe 's/(?<!\r)\n/\r\n/g'
-    else
-        # Fallback: simple sed replacement
-        sed $'s/\n/\r\n/g'
-    fi
-}
-
 # Print a line with proper newline and carriage return to reset cursor position
 # This ensures each line starts at column 0
 # Uses echo -e to interpret color escape sequences
@@ -395,9 +387,6 @@ parse_agent_output() {
         return
     fi
     
-    # Track if we've received first output (don't start spinner until then)
-    local first_output_received=0
-    local last_output_time=$(date +%s)
     # Track currently displayed user story to avoid repeating banners
     local current_story=""
     # Track if we're in a thinking block (for streaming output)
@@ -407,6 +396,20 @@ parse_agent_output() {
     # Set to 1 when the final result event reports is_error=true; the function
     # returns 1 in that case so the pipeline (pipefail) sees the agent failure
     local result_failed=0
+    # Dedupe shape warnings (bash 3.2-safe pipe-delimited keys)
+    local seen_event_shapes="|"
+    
+    # Log one warning per unique NDJSON shape (unknown type or empty payload)
+    warn_event_shape() {
+        local shape_key="$1"
+        local line="$2"
+        case "$seen_event_shapes" in
+            *"|${shape_key}|"*) return 0 ;;
+        esac
+        seen_event_shapes="${seen_event_shapes}${shape_key}|"
+        local truncated_line="${line:0:200}"
+        log_warn "Unrecognized NDJSON event shape (${shape_key}): ${truncated_line}"
+    }
     
     # Process each line of NDJSON
     while IFS= read -r line; do
@@ -467,6 +470,8 @@ parse_agent_output() {
                     # Normalize newlines: ensure \n is preceded by \r to reset cursor to column 0
                     thinking_text="${thinking_text//$'\n'/$'\r\n'}"
                     printf '%s' "$thinking_text"
+                else
+                    warn_event_shape "thinking:empty" "$line"
                 fi
                 ;;
             "assistant")
@@ -517,9 +522,11 @@ parse_agent_output() {
                         # Normalize newlines: ensure \n is preceded by \r to reset cursor to column 0
                         content="${content//$'\n'/$'\r\n'}"
                         printf '%s' "$content"
-                        
-                        last_output_time=$(date +%s)
+                    else
+                        warn_event_shape "assistant:empty" "$line"
                     fi
+                else
+                    warn_event_shape "assistant:empty" "$line"
                 fi
                 ;;
             "tool_call")
@@ -540,6 +547,7 @@ parse_agent_output() {
                 
                 # Skip if no tool name extracted
                 if [ -z "$tool_name" ] || [ "$tool_name" = "null" ]; then
+                    warn_event_shape "tool_call:empty" "$line"
                     continue
                 fi
                 
@@ -645,7 +653,8 @@ parse_agent_output() {
                 fi
                 ;;
             *)
-                # Unknown event type - show in debug mode only
+                # Unknown event type — warn once per shape (verbose still shows raw debug)
+                warn_event_shape "unknown:${event_type}" "$line"
                 if [ "$VERBOSE" = "1" ]; then
                     stop_spinner
                     # Show the raw event type and first 200 chars of the line
@@ -656,6 +665,12 @@ parse_agent_output() {
                 ;;
         esac
     done
+    
+    # Close thinking block if still active (fixes dim-shell-prompt leak)
+    if [ "$thinking_started" = "1" ]; then
+        printf "${NC}\r\n"
+        thinking_started=0
+    fi
     
     # Close assistant streaming block if still active
     if [ "$assistant_streaming" = "1" ]; then
@@ -2341,9 +2356,6 @@ This iteration you will work EXACTLY one story: ${next_story_id} — ${next_stor
         fi
     fi
 
-    local full_cmd="$CURSOR_CMD ${CURSOR_ARGS[*]} <prompt>"
-    
-
     # Pre-flight check: ensure the command exists
     if ! command -v "$CURSOR_CMD" &> /dev/null; then
         log_error "Command not found: $CURSOR_CMD"
@@ -2363,7 +2375,7 @@ This iteration you will work EXACTLY one story: ${next_story_id} — ${next_stor
     fi
 
     # Run cursor-agent with the prompt
-    # Use the global OUTPUT_FILE (managed by main() trap) for raw output storage
+    # Use the global OUTPUT_FILE (managed by main() trap) for raw NDJSON capture
     # Parse NDJSON stream through parse_agent_output for formatted display
     local exit_code=0
     
@@ -2371,7 +2383,7 @@ This iteration you will work EXACTLY one story: ${next_story_id} — ${next_stor
     > "$OUTPUT_FILE"
     
     # Run command with NDJSON parsing for real-time formatted output
-    # Raw JSON is saved to OUTPUT_FILE for completion signal detection
+    # Raw JSON is saved to OUTPUT_FILE for the stall watchdog and debugging
     # Parsed output is displayed to terminal
     log_debug "Starting agent with stream-json output"
     
@@ -2409,30 +2421,56 @@ This iteration you will work EXACTLY one story: ${next_story_id} — ${next_stor
     # Use short sleep intervals (0.5s) for responsive Ctrl+C handling
     local wait_start=$(date +%s)
     local timed_out=0
+    local kill_reason=""
+    local last_output_size=0
+    local last_output_change_time=$(date +%s)
     
     while kill -0 "$PIPELINE_PID" 2>/dev/null; do
         local elapsed=$(($(date +%s) - wait_start))
         if [ "$elapsed" -ge "$ITERATION_TIMEOUT" ]; then
             log_warn "Iteration timed out after ${ITERATION_TIMEOUT}s - killing process"
             timed_out=1
-            # Kill the process group (negative PID kills the group)
-            kill -TERM -"$PIPELINE_PID" 2>/dev/null || kill -TERM "$PIPELINE_PID" 2>/dev/null || true
-            pkill -TERM -P "$PIPELINE_PID" 2>/dev/null || true
-            sleep 1
-            kill -9 -"$PIPELINE_PID" 2>/dev/null || kill -9 "$PIPELINE_PID" 2>/dev/null || true
-            pkill -9 -P "$PIPELINE_PID" 2>/dev/null || true
+            kill_reason="timeout"
             break
         fi
+        
+        # Stall watchdog: kill if raw output file size is unchanged for STALL_TIMEOUT
+        local current_output_size=0
+        if [ -f "$OUTPUT_FILE" ]; then
+            current_output_size=$(wc -c < "$OUTPUT_FILE" | tr -d ' ')
+        fi
+        if [ "$current_output_size" != "$last_output_size" ]; then
+            last_output_size=$current_output_size
+            last_output_change_time=$(date +%s)
+        else
+            local stall_elapsed=$(($(date +%s) - last_output_change_time))
+            if [ "$stall_elapsed" -ge "$STALL_TIMEOUT" ]; then
+                log_warn "Stall detected (no output for ${stall_elapsed}s) - killing process"
+                timed_out=1
+                kill_reason="stall"
+                break
+            fi
+        fi
+        
         # Check every 0.5 seconds for responsive Ctrl+C handling
         sleep 0.5
     done
+    
+    if [ "$timed_out" -eq 1 ]; then
+        # Kill the process group (negative PID kills the group)
+        kill -TERM -"$PIPELINE_PID" 2>/dev/null || kill -TERM "$PIPELINE_PID" 2>/dev/null || true
+        pkill -TERM -P "$PIPELINE_PID" 2>/dev/null || true
+        sleep 1
+        kill -9 -"$PIPELINE_PID" 2>/dev/null || kill -9 "$PIPELINE_PID" 2>/dev/null || true
+        pkill -9 -P "$PIPELINE_PID" 2>/dev/null || true
+    fi
     
     if [ "$timed_out" -eq 0 ]; then
         wait $PIPELINE_PID 2>/dev/null || exit_code=$?
     else
         exit_code=124  # Standard timeout exit code
         local kill_duration=$(($(date +%s) - start_time))
-        append_killed_iteration_marker "$iteration" "timeout" "$kill_duration"
+        append_killed_iteration_marker "$iteration" "${kill_reason:-timeout}" "$kill_duration"
     fi
     LAZY_DEV_ITERATION_ACTIVE=0
     PIPELINE_PID=""
