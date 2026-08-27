@@ -136,7 +136,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-006 — Model env overrides + fallback to CLI default model (RESOLVED 2026-08-27, commit 6f6e08f)
 - [x] CHUNK-007 — Derived paths (no hardcoded `.cursor/lazy-dev`) + `LAZY_DEV_PRINT_CONTEXT` (RESOLVED 2026-08-27, commit 6df4edd)
 - [x] CHUNK-008 — Prompt/rules dedup (one canonical git policy, one commit-type table) (RESOLVED 2026-08-27, commit b529bd0)
-- [x] CHUNK-009 — Runner-inlined rule injection (deterministic protocol) (RESOLVED 2026-08-27, commit pending)
+- [x] CHUNK-009 — Runner-inlined rule injection (deterministic protocol) (RESOLVED 2026-08-27, commit 31b8fc8)
 - [ ] CHUNK-010 — Assigned-story injection into CONTEXT
 - [ ] CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens)
 - [ ] CHUNK-012 — Read-only review contract + diff-range context for reviewers
@@ -848,7 +848,7 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **State left behind:** `main`, clean tree pending commit; `LAZY_DEV_REL` + `LAZY_DEV_PRINT_CONTEXT` ready for CHUNK-009/010/018 verification.
 - **First step for next chunk (CHUNK-008):** Read CHUNK-008 spec; dedup git policy (shrink CONTEXT git block) and commit-type tables across `prompt.md` + `rules/*.mdc`.
 
-### CHUNK-009 — Runner-inlined rule injection (deterministic protocol) (RESOLVED 2026-08-27 | commit pending)
+### CHUNK-009 — Runner-inlined rule injection (deterministic protocol) (RESOLVED 2026-08-27 | commit 31b8fc8)
 - **Did:** `go.sh`: added `build_inlined_rules()` (sorted `rules/*.mdc` at depth 1, excludes `discovered/`); `run_iteration` appends separator + **Injected Protocol** block with `### rules/<file>.mdc` headings and full rule bodies after `prompt.md`. `prompt.md`: replaced auto-apply paragraph with loop-injection truth. Plus `HANDOVER.md` queue flip + this note.
 - **Deviations from spec:** none.
 - **Gotchas:** (1) Rule order is deterministic via `find … | sort` (agent-loop → pattern-discovery → quality-gates → task-breakdown). (2) `cursor agent --help` / `cursor-agent --help` expose no rules-discovery flag or extra rule-path option — inlining is the correct approach. (3) CHUNK-018 will cap `rules/discovered/` injection separately; do not add discovered files here.
