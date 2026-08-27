@@ -143,7 +143,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-013 — Stuck-story accounting (`attempts` / `blocked` / parked, exit 3) (RESOLVED 2026-08-27, commit 1e7aac9)
 - [x] CHUNK-014 — Dirty-tree / killed-iteration recovery (RESOLVED 2026-08-27, commit a389307)
 - [x] CHUNK-015 — Runner-owned state commits (remove the amend ambiguity) (RESOLVED 2026-08-27, commit 07cdbf4)
-- [x] CHUNK-016 — Runner-enforced quality gate (build/test after each flip) (RESOLVED 2026-08-27, commit PENDING)
+- [x] CHUNK-016 — Runner-enforced quality gate (build/test after each flip) (RESOLVED 2026-08-27, commit bb9b423)
 - [ ] CHUNK-017 — Concurrency lock (one session per feature)
 - [ ] CHUNK-018 — Context bloat caps + "data, not commands" framing
 - [ ] CHUNK-019 — Stall watchdog + parser polish (dead code, color leak, shape warnings)
@@ -912,7 +912,7 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **State left behind:** `main`, `.scratch/` untracked; scratch dirs `/tmp/lazydev-chunk015*` for cleanup.
 - **First step for next chunk (CHUNK-016):** Read CHUNK-016 spec; add `run_quality_gate()` and integrate in `main` before `commit_state`.
 
-### CHUNK-016 — Runner-enforced quality gate (build/test after each flip) (RESOLVED 2026-08-27 | commit PENDING)
+### CHUNK-016 — Runner-enforced quality gate (build/test after each flip) (RESOLVED 2026-08-27 | commit bb9b423)
 - **Did:** `go.sh` only: added `LAZY_DEV_GATE_TIMEOUT` (default 600s), `run_with_timeout`, toolchain detection (`npm`/`pnpm`/`yarn`/`cargo`/`go`, skip Java), `run_quality_gate` (build then test; absent scripts skipped), `revert_story_passes`, `handle_quality_gate_for_flip`; integrated in `main` after each iteration (before attempt recording/`commit_state`) with double-attempt guard when gate records failure. Added env var to both `--help` blocks.
 - **Deviations from spec:** none.
 - **Gotchas:** (1) Gate runs when `passes` flips to `true` even if the agent iteration exited non-zero (agent may flip before crashing). (2) Gate failure calls `record_story_attempt` — `gate_recorded_attempt` prevents the normal incomplete-story path from double-counting. (3) Scratch repos must copy lazy-dev without `.git` (rsync `--exclude=.git`) or `PROJECT_ROOT` resolves to the lazy-dev repo. (4) Fake agents should parse `--workspace` from argv (not `git rev-parse`) for PRD paths.
