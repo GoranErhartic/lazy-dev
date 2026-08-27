@@ -177,6 +177,10 @@ FASTFAIL_SECS="${LAZY_DEV_FASTFAIL_SECS:-60}"
 #   LAZY_DEV_FAKE_AGENT=/path/to/fake-agent.sh ./go.sh my-feature
 LAZY_DEV_FAKE_AGENT="${LAZY_DEV_FAKE_AGENT:-}"
 
+# Unique session marker injected into each agent prompt; used for scoped
+# orphan cleanup (pkill -f on this marker only — never on PROJECT_ROOT).
+LAZY_DEV_SESSION_MARKER=""
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -677,6 +681,15 @@ kill_descendants() {
     kill_tree "$pid" "9"
 }
 
+# Last-resort sweep: kill only processes whose argv contains our session marker.
+# Safe because user processes cannot contain our run-unique marker string.
+kill_session_orphans() {
+    if [ -n "${LAZY_DEV_SESSION_MARKER:-}" ]; then
+        log_debug "Killing session-specific orphaned processes (marker: $LAZY_DEV_SESSION_MARKER)..."
+        pkill -9 -f "$LAZY_DEV_SESSION_MARKER" 2>/dev/null || true
+    fi
+}
+
 cleanup() {
     local exit_code=$?
     log_debug "Cleanup triggered (exit code: $exit_code)"
@@ -726,14 +739,8 @@ cleanup() {
     # Final sweep: kill any remaining direct children
     pkill -9 -P $$ 2>/dev/null || true
     
-    # Kill cursor-agent processes associated with our workspace (session-specific)
-    # These may have been orphaned and reparented to init
-    if [ -n "$PROJECT_ROOT" ]; then
-        log_debug "Killing session-specific orphaned processes..."
-        pkill -9 -f "cursor-agent.*$PROJECT_ROOT" 2>/dev/null || true
-        pkill -9 -f "node.*dist/entry/worker.*$PROJECT_ROOT" 2>/dev/null || true
-        pkill -9 -f "script -q /dev/null.*cursor.*$PROJECT_ROOT" 2>/dev/null || true
-    fi
+    # Last-resort: kill only processes carrying our session marker (not PROJECT_ROOT)
+    kill_session_orphans
     
     # Clean temp files
     if [ -n "$OUTPUT_FILE" ] && [ -f "$OUTPUT_FILE" ]; then
@@ -789,11 +796,8 @@ cleanup_iteration() {
         kill -9 "$child_pid" 2>/dev/null || true
     done
     
-    # Kill session-specific orphaned processes (reparented to init)
-    if [ -n "$PROJECT_ROOT" ]; then
-        pkill -9 -f "cursor-agent.*$PROJECT_ROOT" 2>/dev/null || true
-        pkill -9 -f "node.*dist/entry/worker.*$PROJECT_ROOT" 2>/dev/null || true
-    fi
+    # Last-resort: kill only processes carrying our session marker (not PROJECT_ROOT)
+    kill_session_orphans
     
     # Verify caffeinate is still running (warn if it died)
     if [ -n "$CAFFEINATE_PID" ]; then
@@ -1379,9 +1383,15 @@ run_iteration() {
     # Get current branch name
     CURRENT_GIT_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
     
+    # Session marker for scoped orphan cleanup (one marker per go.sh run)
+    if [ -z "${LAZY_DEV_SESSION_MARKER:-}" ]; then
+        LAZY_DEV_SESSION_MARKER="lazydev-$$-$(date +%s)"
+    fi
+    
     # Add feature-specific context with STRICT git policy
     # All paths are relative to project root (workspace)
-    CONTEXT="
+    CONTEXT="<!-- lazy-dev session: ${LAZY_DEV_SESSION_MARKER} -->
+
 # Feature Context
 - Feature: $FEATURE_NAME
 - Workspace/Project Root: $PROJECT_ROOT

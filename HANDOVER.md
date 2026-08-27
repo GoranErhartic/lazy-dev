@@ -131,7 +131,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-001 — Failure detection: pipefail + is_error + real exit codes (+ test hooks) (RESOLVED 2026-08-25, commit b4dea7a)
 - [x] CHUNK-002 — Fail-safe PRD completion predicate (shared jq, `passes != true`) (RESOLVED 2026-08-27, commit 32eefa6)
 - [x] CHUNK-003 — Bootstrap PRD validation + corrupted-PRD recovery (RESOLVED 2026-08-27, commit 07e340a)
-- [ ] CHUNK-004 — Session-scoped process kills (replace `pkill -f` sweeps)
+- [x] CHUNK-004 — Session-scoped process kills (replace `pkill -f` sweeps) (RESOLVED 2026-08-27, commit pending)
 - [ ] CHUNK-005 — Model selection by story type (Jira IDs) + per-story `model` field
 - [ ] CHUNK-006 — Model env overrides + fallback to CLI default model
 - [ ] CHUNK-007 — Derived paths (no hardcoded `.cursor/lazy-dev`) + `LAZY_DEV_PRINT_CONTEXT`
@@ -815,3 +815,11 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Source harness (`set +e` after source): truncated JSON → `validate_prd` exit 1, specific "does not contain valid JSON" error + remediation; story missing `.passes` → exit 1, "Story US-001: .passes must be a boolean (got null)"; `examples/prd.json` → exit 0; `get_next_story_id` on corrupted file → empty string, exit 0 (no `set -e` abort).
 - **State left behind:** `main`, clean tree after commit; `validate_prd` is the bootstrap gate — CHUNK-013 should call it after jq-mutating the PRD.
 - **First step for next chunk (CHUNK-004):** Read CHUNK-004 spec; start with the session marker in `run_iteration`'s CONTEXT build, then remove the `pkill -9 -f` blocks in `cleanup` and `cleanup_iteration`.
+
+### CHUNK-004 — Session-scoped process kills (replace `pkill -f` sweeps) (RESOLVED 2026-08-27 | commit pending)
+- **Did:** `go.sh` only: (1) added global `LAZY_DEV_SESSION_MARKER` set once per go.sh run in `run_iteration` (`lazydev-$$-<epoch>`) and prepended `<!-- lazy-dev session: … -->` to CONTEXT; (2) removed both broad `pkill -9 -f "cursor-agent.*$PROJECT_ROOT"` / node / script sweeps from `cleanup` and `cleanup_iteration`; (3) added `kill_session_orphans()` — single last-resort `pkill -9 -f "$LAZY_DEV_SESSION_MARKER"` called from both cleanup paths; kept `pkill -9 -P $$` in `cleanup`. Plus `HANDOVER.md` queue flip + this note.
+- **Deviations from spec:** none.
+- **Gotchas:** (1) macOS `ps`/`pgrep` often hide bash `-c` argv tails — behavioral decoys must be reparented to init (not children of the sourcing shell) or use `exec -a` so `cursor-agent.*$PROJECT_ROOT` is visible; otherwise `cleanup_iteration`'s existing `pgrep -P $$` child sweep kills them before the marker test matters. (2) Marker is initialized once per run (first `run_iteration`) so orphaned processes from earlier iterations still match the session marker in their prompt argv.
+- **Verification evidence:** `bash -n go.sh` → OK. Grep: zero `pkill -9 -f "cursor-agent.*$PROJECT_ROOT"` remains. Scratch `/tmp/lazydev-chunk004`: decoy `exec -a "cursor-agent $SCRATCH" sleep 300` (no marker) → `cleanup_iteration` → **survived** (PID 13201); decoy with marker `lazydev-testmarker-die123` → **killed**; fake-agent run (`LAZY_DEV_FAKE_AGENT`, `--max-iterations 1`) → "Iteration complete", `pgrep` for fake agent → empty (no orphans).
+- **State left behind:** `main`, clean tree pending commit; `kill_session_orphans` + session marker ready for CHUNK-026 E2E decoy test.
+- **First step for next chunk (CHUNK-005):** Read CHUNK-005 spec; start with suffix-based matching in `get_model_for_story` (`*-REVIEW-2` before `*-REVIEW`).
