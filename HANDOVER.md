@@ -23,7 +23,7 @@ everything you need is in this file.**
 3. **Pre-flight**: run `git status` in the repo root. If the tree is dirty, or the queue/notes show a chunk was partially edited by a crashed run, reconcile first (finish the edit or revert it) and record what you found in your handoff note.
 4. **Implement ONLY the selected chunk**, per its spec in section 3. Work strictly in queue order — later chunks assume earlier ones landed. Do not start other chunks, do not redesign adjacent chunks.
 5. **Verify** every acceptance criterion in the chunk. Run the listed commands and capture the key output — you will paste evidence into your handoff note.
-6. **Mark resolved**: in the QUEUE, change `- [ ]` to `- [x]` and append `(RESOLVED <YYYY-MM-DD>, commit <short-hash>)` to that line.
+6. **Mark resolved**: in the QUEUE, change `- [ ]` to `- [x]` and append `(RESOLVED <YYYY-MM-DD>, commit b529bd0)` to that line.
 7. **Append a handoff note** to section 4 using the template below.
 8. **Commit** — one commit containing your code changes + the queue flip + the handoff note:
    ```
@@ -44,7 +44,7 @@ everything you need is in this file.**
 ### Handoff Note Template (append to section 4, newest last)
 
 ```markdown
-### CHUNK-00X — <title> (RESOLVED <date> | commit <short-hash>)
+### CHUNK-00X — <title> (RESOLVED <date> | commit b529bd0)
 - **Did:** <1–3 sentences; list files changed>
 - **Deviations from spec:** <none | what and why>
 - **Gotchas:** <things that surprised you; traps the next agent should know>
@@ -135,7 +135,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-005 — Model selection by story type (Jira IDs) + per-story `model` field (RESOLVED 2026-08-27, commit 26c6655)
 - [x] CHUNK-006 — Model env overrides + fallback to CLI default model (RESOLVED 2026-08-27, commit 6f6e08f)
 - [x] CHUNK-007 — Derived paths (no hardcoded `.cursor/lazy-dev`) + `LAZY_DEV_PRINT_CONTEXT` (RESOLVED 2026-08-27, commit 6df4edd)
-- [x] CHUNK-008 — Prompt/rules dedup (one canonical git policy, one commit-type table) (RESOLVED 2026-08-27, commit TBD)
+- [x] CHUNK-008 — Prompt/rules dedup (one canonical git policy, one commit-type table) (RESOLVED 2026-08-27, commit b529bd0)
 - [ ] CHUNK-009 — Runner-inlined rule injection (deterministic protocol)
 - [ ] CHUNK-010 — Assigned-story injection into CONTEXT
 - [ ] CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens)
@@ -848,7 +848,7 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **State left behind:** `main`, clean tree pending commit; `LAZY_DEV_REL` + `LAZY_DEV_PRINT_CONTEXT` ready for CHUNK-009/010/018 verification.
 - **First step for next chunk (CHUNK-008):** Read CHUNK-008 spec; dedup git policy (shrink CONTEXT git block) and commit-type tables across `prompt.md` + `rules/*.mdc`.
 
-### CHUNK-008 — Prompt/rules dedup (one canonical git policy, one commit-type table) (RESOLVED 2026-08-27 | commit TBD)
+### CHUNK-008 — Prompt/rules dedup (one canonical git policy, one commit-type table) (RESOLVED 2026-08-27 | commit b529bd0)
 - **Did:** Shrunk `go.sh` CONTEXT git block to one-line push ban + pointer to prompt. Canonical git policy and full commit-type table (`feat`/`fix`/`refactor`/`test`/`docs`/`chore`) live in `prompt.md`; `agent-loop.mdc` and `quality-gates.mdc` now point to it. Compressed web-search rule to one compact section in `prompt.md`; `agent-loop.mdc` uses one-line pointer. Trimmed redundant project-rules tables and Quick Reference in `prompt.md`. Files: `go.sh`, `prompt.md`, `rules/agent-loop.mdc`, `rules/quality-gates.mdc`, `HANDOVER.md`.
 - **Deviations from spec:** Combined word count dropped 24.2% (4195→3181), slightly under the 25–30% target — protected sections (one-story, review-story, never-ask-user rules) kept intact; additional compression was limited to non-canonical boilerplate (project-rules tables, Quick Reference).
 - **Gotchas:** (1) `go.sh` header comment (line 13) still mentions git push — not agent-facing CONTEXT; grep audit excludes it. (2) CHUNK-011 will expand the canonical git section and remove remaining `git add .` references — CONTEXT is already minimal. (3) CHUNK-009 will replace "rules auto-apply" wording when rules are inlined.
