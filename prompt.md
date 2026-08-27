@@ -181,6 +181,8 @@ The loop runner monitors the PRD state automatically and will stop when all stor
 
 ### Files to Read First
 
+**If `prd.json` fails to parse:** restore it from the last commit (`git checkout -- <path-to-prd.json>`), verify it parses (e.g. `jq . <path-to-prd.json>`), and only then proceed with story selection.
+
 1. **`.cursor/rules/agent-behavior.mdc`** — Project development rules (MANDATORY)
 2. **`.cursor/rules/languages/react/*.mdc`** — React/TypeScript patterns (for frontend work)
 3. **`lazy-dev/rules/*.mdc`** — Lazy-dev agent loop rules (agent-loop, task-breakdown, quality-gates, pattern-discovery)

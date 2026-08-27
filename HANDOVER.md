@@ -130,7 +130,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 
 - [x] CHUNK-001 — Failure detection: pipefail + is_error + real exit codes (+ test hooks) (RESOLVED 2026-08-25, commit b4dea7a)
 - [x] CHUNK-002 — Fail-safe PRD completion predicate (shared jq, `passes != true`) (RESOLVED 2026-08-27, commit 32eefa6)
-- [ ] CHUNK-003 — Bootstrap PRD validation + corrupted-PRD recovery
+- [x] CHUNK-003 — Bootstrap PRD validation + corrupted-PRD recovery (RESOLVED 2026-08-27, commit PLACEHOLDER)
 - [ ] CHUNK-004 — Session-scoped process kills (replace `pkill -f` sweeps)
 - [ ] CHUNK-005 — Model selection by story type (Jira IDs) + per-story `model` field
 - [ ] CHUNK-006 — Model env overrides + fallback to CLI default model
@@ -807,3 +807,11 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Source harness (`set +e` after source) with five temp PRDs in `/tmp`: (a) missing `passes` → incomplete, next=US-001, counts=0/1; (b) `passes:null` → incomplete, next=US-002; (c) `passes:"true"` (string) → incomplete, next=US-003; (d) `userStories:[]` → incomplete, next=empty, counts=0/0; (e) all `passes:true` → complete, next=empty, counts=2/2. All five PASS.
 - **State left behind:** `main`, clean tree after commit; `PRD_INCOMPLETE_STORY` is the single predicate source for CHUNK-003/013 to reuse.
 - **First step for next chunk (CHUNK-003):** Audit `PRD_FILE` command substitutions under `set -e`; add `validate_prd` in `verify_setup` and the `prompt.md` restore paragraph.
+
+### CHUNK-003 — Bootstrap PRD validation + corrupted-PRD recovery (RESOLVED 2026-08-27 | commit PLACEHOLDER)
+- **Did:** `go.sh`: added `validate_prd` (JSON parse, non-empty `userStories` array, per-story `id`/`priority`/`passes` boolean checks with story-specific errors); called from `verify_setup` after jq availability check; audited all `PRD_FILE` jq command substitutions — all already guarded (`|| echo`, `|| true`, or inside functions that degrade gracefully). `prompt.md`: one paragraph in "Files to Read First" on restoring corrupted `prd.json` from git. Plus `HANDOVER.md` queue flip + this note.
+- **Deviations from spec:** none.
+- **Gotchas:** (1) `validate_prd` requires `.passes` to be a JSON boolean — missing `passes` reports as `got null` (fail-safe; agents must set explicit `true`/`false`). (2) Bootstrap validation runs only in `verify_setup` at loop start — a PRD corrupted mid-run is still handled gracefully by the existing guarded jq helpers; the agent prompt now documents restore-from-git recovery.
+- **Verification evidence:** `bash -n go.sh` → OK. Source harness (`set +e` after source): truncated JSON → `validate_prd` exit 1, specific "does not contain valid JSON" error + remediation; story missing `.passes` → exit 1, "Story US-001: .passes must be a boolean (got null)"; `examples/prd.json` → exit 0; `get_next_story_id` on corrupted file → empty string, exit 0 (no `set -e` abort).
+- **State left behind:** `main`, clean tree after commit; `validate_prd` is the bootstrap gate — CHUNK-013 should call it after jq-mutating the PRD.
+- **First step for next chunk (CHUNK-004):** Read CHUNK-004 spec; start with the session marker in `run_iteration`'s CONTEXT build, then remove the `pkill -9 -f` blocks in `cleanup` and `cleanup_iteration`.

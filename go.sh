@@ -901,6 +901,65 @@ get_next_story_id() {
     jq -r "[.userStories[]? | $PRD_INCOMPLETE_STORY] | sort_by(.priority) | .[0].id // \"\"" "$prd_file" 2>/dev/null || true
 }
 
+# Validate PRD structure at bootstrap (called from verify_setup).
+# Checks: valid JSON, non-empty userStories array, each story has id/priority/passes.
+# Usage: validate_prd "$PRD_FILE"  (returns 0 on success, 1 on failure)
+validate_prd() {
+    local prd_file="$1"
+
+    if [ ! -f "$prd_file" ]; then
+        log_error "PRD validation failed: file not found: $prd_file"
+        log_info "Copy from examples: cp $SCRIPT_DIR/examples/prd.json $prd_file"
+        return 1
+    fi
+
+    if ! jq empty "$prd_file" 2>/dev/null; then
+        log_error "PRD validation failed: $prd_file does not contain valid JSON"
+        log_info "Remediation: restore from the last commit: git checkout -- $prd_file"
+        log_info "Or copy from examples: cp $SCRIPT_DIR/examples/prd.json $prd_file"
+        return 1
+    fi
+
+    local story_count
+    story_count=$(jq 'if (.userStories | type) == "array" then (.userStories | length) else -1 end' "$prd_file" 2>/dev/null || echo "-1")
+
+    if [ "$story_count" = "-1" ]; then
+        log_error "PRD validation failed: .userStories must be a non-empty array"
+        log_info "Remediation: fix $prd_file or restore: git checkout -- $prd_file"
+        return 1
+    fi
+
+    if [ "$story_count" -eq 0 ]; then
+        log_error "PRD validation failed: .userStories is empty (at least one story required)"
+        log_info "Remediation: add stories to $prd_file or copy from examples"
+        return 1
+    fi
+
+    local field_errors
+    field_errors=$(jq -r '
+        .userStories | to_entries[] |
+        if (.value.id | type) != "string" or (.value.id | length) == 0 then
+            "Story at index \(.key): missing or empty .id"
+        elif (.value.priority | type) != "number" then
+            "Story \(.value.id): .priority must be a number (got \(.value.priority | type))"
+        elif (.value.passes | type) != "boolean" then
+            "Story \(.value.id): .passes must be a boolean (got \(.value.passes | type))"
+        else
+            empty
+        end
+    ' "$prd_file" 2>/dev/null || echo "PRD validation failed: could not inspect story fields")
+
+    if [ -n "$field_errors" ]; then
+        while IFS= read -r err_line; do
+            [ -n "$err_line" ] && log_error "PRD validation failed: $err_line"
+        done <<< "$field_errors"
+        log_info "Remediation: fix the fields above in $prd_file, or restore: git checkout -- $prd_file"
+        return 1
+    fi
+
+    return 0
+}
+
 # Get the appropriate model for a specific story ID
 # Usage: model=$(get_model_for_story "$story_id")
 # Returns:
@@ -1215,6 +1274,10 @@ verify_setup() {
     # Check if jq is available
     if ! command -v jq &> /dev/null; then
         log_error "jq not found. Please install it: brew install jq"
+        exit 1
+    fi
+
+    if ! validate_prd "$PRD_FILE"; then
         exit 1
     fi
 
