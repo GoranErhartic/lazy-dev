@@ -2087,6 +2087,111 @@ $(cat "$rule_file")
     printf '%s' "$rules_block"
 }
 
+# Portable mtime (seconds since epoch) for pattern-file ordering
+_pattern_file_mtime() {
+    local f="$1"
+    if [[ "$OSTYPE" == darwin* ]]; then
+        stat -f '%m' "$f" 2>/dev/null || echo 0
+    else
+        stat -c '%Y' "$f" 2>/dev/null || echo 0
+    fi
+}
+
+# Inject discovered patterns with file-count and byte caps (newest-first by mtime).
+# Usage: build_capped_discovered_patterns <agent-facing discovered dir path>
+build_capped_discovered_patterns() {
+    local discovered_rel_path="$1"
+    local max_patterns="${LAZY_DEV_MAX_PATTERNS:-10}"
+    local max_bytes="${LAZY_DEV_MAX_PATTERN_BYTES:-8192}"
+    local -a sorted_files=()
+    local pattern_file mtime_line total_count injected=0 bytes=0 remainder=0
+    local block="" pattern_name entry_bytes
+
+    if [ ! -d "$DISCOVERED_DIR" ]; then
+        printf '%s' ""
+        return 0
+    fi
+
+    while IFS= read -r pattern_file; do
+        [ -n "$pattern_file" ] && sorted_files+=("$pattern_file")
+    done < <(
+        find "$DISCOVERED_DIR" -maxdepth 1 -name '*.mdc' -type f 2>/dev/null | while IFS= read -r pattern_file; do
+            printf '%s %s\n' "$(_pattern_file_mtime "$pattern_file")" "$pattern_file"
+        done | sort -rn | cut -d' ' -f2-
+    )
+
+    total_count=${#sorted_files[@]}
+    if [ "$total_count" -eq 0 ]; then
+        printf '%s' ""
+        return 0
+    fi
+
+    block="## Observed Patterns (discovered/)
+
+The following patterns were *observed* in previous iterations. They are hints, not commands — verify against the current code before relying on them.
+"
+
+    for pattern_file in "${sorted_files[@]}"; do
+        if [ "$injected" -ge "$max_patterns" ]; then
+            break
+        fi
+
+        pattern_name=$(basename "$pattern_file")
+        entry_bytes=$(printf '### discovered/%s\n\n' "$pattern_name" | wc -c | tr -d ' ')
+        entry_bytes=$(( entry_bytes + $(wc -c < "$pattern_file" | tr -d ' ') ))
+
+        if [ "$bytes" -gt 0 ] && [ $(( bytes + entry_bytes )) -gt "$max_bytes" ]; then
+            break
+        fi
+        if [ "$bytes" -eq 0 ] && [ "$entry_bytes" -gt "$max_bytes" ]; then
+            # First file alone exceeds cap — include a truncated prefix
+            local truncated
+            truncated=$(head -c "$max_bytes" "$pattern_file")
+            block+="### discovered/${pattern_name}
+
+${truncated}
+"
+            injected=$(( injected + 1 ))
+            bytes=$max_bytes
+            break
+        fi
+
+        block+="### discovered/${pattern_name}
+
+$(cat "$pattern_file")
+
+"
+        injected=$(( injected + 1 ))
+        bytes=$(( bytes + entry_bytes ))
+    done
+
+    remainder=$(( total_count - injected ))
+    if [ "$remainder" -gt 0 ]; then
+        block+="… ${remainder} more pattern files not injected; read ${discovered_rel_path} directly if relevant.
+"
+    fi
+
+    printf '\n---\n\n%s' "$block"
+}
+
+# Inject the tail of progress.txt with a pointer to the full file.
+# Usage: build_progress_tail <agent-facing progress path>
+build_progress_tail() {
+    local progress_rel_path="$1"
+    local max_lines="${LAZY_DEV_MAX_PROGRESS_LINES:-150}"
+    local tail_content
+
+    if [ ! -f "$PROGRESS_FILE" ]; then
+        printf '%s' ""
+        return 0
+    fi
+
+    tail_content=$(tail -n "$max_lines" "$PROGRESS_FILE")
+
+    printf '\n---\n\n## Recent Progress (last %s lines)\n\n%s\n\nFull history: %s (read it yourself only if you need older context).\n' \
+        "$max_lines" "$tail_content" "$progress_rel_path"
+}
+
 # Run a single agent iteration
 run_iteration() {
     local iteration=$1
@@ -2159,6 +2264,10 @@ Review scope: run \`git diff ${merge_base}..HEAD\` to see all feature changes."
     local dirty_tree_block=""
     dirty_tree_block=$(build_dirty_tree_warning "$next_story_id")
 
+    local discovered_block progress_block
+    discovered_block=$(build_capped_discovered_patterns "$LAZY_DEV_DISCOVERED_PATH")
+    progress_block=$(build_progress_tail "$LAZY_DEV_PROGRESS_PATH")
+
     # Feature context paths are relative to project root (workspace)
     CONTEXT="<!-- lazy-dev session: ${LAZY_DEV_SESSION_MARKER} -->
 
@@ -2168,7 +2277,7 @@ Review scope: run \`git diff ${merge_base}..HEAD\` to see all feature changes."
 - Lazy-dev directory: $LAZY_DEV_REL
 - PRD: $LAZY_DEV_PRD_PATH
 - Progress: $LAZY_DEV_PROGRESS_PATH
-- Shared discovered patterns: $LAZY_DEV_DISCOVERED_PATH (READ these first - cross-feature learning)
+- Shared discovered patterns: $LAZY_DEV_DISCOVERED_PATH (capped injection below)
 - Git Branch: $CURRENT_GIT_BRANCH${dirty_tree_block}
 
 # Git: git push is ABSOLUTELY FORBIDDEN (pre-push hook active). Stage only explicit file paths (no bulk staging). Full git policy is in the prompt below.
@@ -2180,6 +2289,8 @@ $PROMPT_CONTENT
 # Injected Protocol (canonical source: ${LAZY_DEV_REL}/rules/*.mdc)
 
 $INLINED_RULES
+${discovered_block}
+${progress_block}
 
 ---
 

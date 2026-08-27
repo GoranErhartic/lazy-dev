@@ -145,7 +145,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-015 — Runner-owned state commits (remove the amend ambiguity) (RESOLVED 2026-08-27, commit 07cdbf4)
 - [x] CHUNK-016 — Runner-enforced quality gate (build/test after each flip) (RESOLVED 2026-08-27, commit bb9b423)
 - [x] CHUNK-017 — Concurrency lock (one session per feature) (RESOLVED 2026-08-27, commit f85bd5d)
-- [ ] CHUNK-018 — Context bloat caps + "data, not commands" framing
+- [x] CHUNK-018 — Context bloat caps + "data, not commands" framing (RESOLVED 2026-08-27, commit 34fc7b2)
 - [ ] CHUNK-019 — Stall watchdog + parser polish (dead code, color leak, shape warnings)
 - [ ] CHUNK-020 — Cost / time budget breaker (exit 2)
 - [ ] CHUNK-021 — Branch-name source of truth (PRD `branchName` wins)
@@ -919,6 +919,14 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Scratch `/tmp/lazydev-chunk017`: run1 (`slow.sh` sleep 30) + run2 same feature → run2 exit **1**, `Another lazy-dev session is running for feature 'chunk017' (PID: …)`; run1 completes, lock artifact **gone**. `kill -9` run1 mid-session → stale `.lazy-dev.lock` dir remains → run3 logs `Removing stale feature lock`, completes, lock **gone**.
 - **State left behind:** `main`, `.scratch/` untracked; scratch dirs `/tmp/lazydev-chunk017*` for cleanup.
 - **First step for next chunk (CHUNK-018):** Read CHUNK-018 spec; cap `rules/discovered/` injection and tail `progress.txt` in `run_iteration`; add observation framing + pattern-discovery.mdc guidance.
+
+### CHUNK-018 — Context bloat caps + "data, not commands" framing (RESOLVED 2026-08-27 | commit 34fc7b2)
+- **Did:** `go.sh`: added `_pattern_file_mtime`, `build_capped_discovered_patterns` (newest-first by mtime; `LAZY_DEV_MAX_PATTERNS` default 10, `LAZY_DEV_MAX_PATTERN_BYTES` default 8192; observation framing + truncation line), `build_progress_tail` (`LAZY_DEV_MAX_PROGRESS_LINES` default 150 + full-history pointer); both injected into CONTEXT in `run_iteration`. `rules/pattern-discovery.mdc`: dedup-before-create + observation phrasing guidance. Plus `HANDOVER.md` queue flip + this note.
+- **Deviations from spec:** none.
+- **Gotchas:** (1) Byte cap counts heading + file body; with ~2077-byte test files the 8KB cap yields 3 files (not 4) before truncation. (2) `build_capped_discovered_patterns` skips a file when adding it would exceed the byte budget (unless it is the first file, which is head-truncated). (3) Progress tail is literal `tail -n N` on `progress.txt` — template header lines count toward the cap. (4) Empty `discovered/` omits the patterns block entirely.
+- **Verification evidence:** `bash -n go.sh` → OK. Scratch `/tmp/lazydev-chunk018`: 15×~2KB `.mdc` (staggered mtimes) + 500-line `progress.txt` → `LAZY_DEV_PRINT_CONTEXT=1`: framing header present; **3** pattern files (≤10, ≤8192 bytes), `… 12 more pattern files not injected`; progress lines **351–500** (150 lines) + full-history pointer. Source harness `LAZY_DEV_MAX_PATTERNS=3` → **3** headings; scratch `/tmp/lazydev-chunk018b` e2e → **3** pattern headings in CONTEXT.
+- **State left behind:** `main`, `.scratch/` untracked; scratch dirs `/tmp/lazydev-chunk018*` for cleanup.
+- **First step for next chunk (CHUNK-019):** Read CHUNK-019 spec; add stall watchdog in `main` wait-loop, shape warnings in `parse_agent_output`, fix thinking color leak, remove dead code.
 
 ### CHUNK-016 — Runner-enforced quality gate (build/test after each flip) (RESOLVED 2026-08-27 | commit bb9b423)
 - **Did:** `go.sh` only: added `LAZY_DEV_GATE_TIMEOUT` (default 600s), `run_with_timeout`, toolchain detection (`npm`/`pnpm`/`yarn`/`cargo`/`go`, skip Java), `run_quality_gate` (build then test; absent scripts skipped), `revert_story_passes`, `handle_quality_gate_for_flip`; integrated in `main` after each iteration (before attempt recording/`commit_state`) with double-attempt guard when gate records failure. Added env var to both `--help` blocks.

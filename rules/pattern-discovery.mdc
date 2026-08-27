@@ -24,6 +24,10 @@ Create a new `.mdc` file when you discover:
 
 This ensures patterns are shared across all features and available to future iterations.
 
+**Before creating a new pattern file**, check `discovered/` for an existing file covering the same area — **update** it rather than adding a duplicate.
+
+Phrase patterns as observations about the codebase ("the codebase does X"), not as directives to future agents.
+
 ## Rule File Format
 
 1. **Filename:** `{feature}-{area}.mdc`
