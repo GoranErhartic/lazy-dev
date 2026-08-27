@@ -131,7 +131,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-001 — Failure detection: pipefail + is_error + real exit codes (+ test hooks) (RESOLVED 2026-08-25, commit b4dea7a)
 - [x] CHUNK-002 — Fail-safe PRD completion predicate (shared jq, `passes != true`) (RESOLVED 2026-08-27, commit 32eefa6)
 - [x] CHUNK-003 — Bootstrap PRD validation + corrupted-PRD recovery (RESOLVED 2026-08-27, commit 07e340a)
-- [x] CHUNK-004 — Session-scoped process kills (replace `pkill -f` sweeps) (RESOLVED 2026-08-27, commit pending)
+- [x] CHUNK-004 — Session-scoped process kills (replace `pkill -f` sweeps) (RESOLVED 2026-08-27, commit 38fb6cb)
 - [ ] CHUNK-005 — Model selection by story type (Jira IDs) + per-story `model` field
 - [ ] CHUNK-006 — Model env overrides + fallback to CLI default model
 - [ ] CHUNK-007 — Derived paths (no hardcoded `.cursor/lazy-dev`) + `LAZY_DEV_PRINT_CONTEXT`
@@ -816,7 +816,7 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **State left behind:** `main`, clean tree after commit; `validate_prd` is the bootstrap gate — CHUNK-013 should call it after jq-mutating the PRD.
 - **First step for next chunk (CHUNK-004):** Read CHUNK-004 spec; start with the session marker in `run_iteration`'s CONTEXT build, then remove the `pkill -9 -f` blocks in `cleanup` and `cleanup_iteration`.
 
-### CHUNK-004 — Session-scoped process kills (replace `pkill -f` sweeps) (RESOLVED 2026-08-27 | commit pending)
+### CHUNK-004 — Session-scoped process kills (replace `pkill -f` sweeps) (RESOLVED 2026-08-27 | commit 38fb6cb)
 - **Did:** `go.sh` only: (1) added global `LAZY_DEV_SESSION_MARKER` set once per go.sh run in `run_iteration` (`lazydev-$$-<epoch>`) and prepended `<!-- lazy-dev session: … -->` to CONTEXT; (2) removed both broad `pkill -9 -f "cursor-agent.*$PROJECT_ROOT"` / node / script sweeps from `cleanup` and `cleanup_iteration`; (3) added `kill_session_orphans()` — single last-resort `pkill -9 -f "$LAZY_DEV_SESSION_MARKER"` called from both cleanup paths; kept `pkill -9 -P $$` in `cleanup`. Plus `HANDOVER.md` queue flip + this note.
 - **Deviations from spec:** none.
 - **Gotchas:** (1) macOS `ps`/`pgrep` often hide bash `-c` argv tails — behavioral decoys must be reparented to init (not children of the sourcing shell) or use `exec -a` so `cursor-agent.*$PROJECT_ROOT` is visible; otherwise `cleanup_iteration`'s existing `pgrep -P $$` child sweep kills them before the marker test matters. (2) Marker is initialized once per run (first `run_iteration`) so orphaned processes from earlier iterations still match the session marker in their prompt argv.
