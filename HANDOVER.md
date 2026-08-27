@@ -134,7 +134,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-004 — Session-scoped process kills (replace `pkill -f` sweeps) (RESOLVED 2026-08-27, commit 38fb6cb)
 - [x] CHUNK-005 — Model selection by story type (Jira IDs) + per-story `model` field (RESOLVED 2026-08-27, commit 26c6655)
 - [x] CHUNK-006 — Model env overrides + fallback to CLI default model (RESOLVED 2026-08-27, commit 6f6e08f)
-- [x] CHUNK-007 — Derived paths (no hardcoded `.cursor/lazy-dev`) + `LAZY_DEV_PRINT_CONTEXT` (RESOLVED 2026-08-27, commit <short-hash>)
+- [x] CHUNK-007 — Derived paths (no hardcoded `.cursor/lazy-dev`) + `LAZY_DEV_PRINT_CONTEXT` (RESOLVED 2026-08-27, commit 6df4edd)
 - [ ] CHUNK-008 — Prompt/rules dedup (one canonical git policy, one commit-type table)
 - [ ] CHUNK-009 — Runner-inlined rule injection (deterministic protocol)
 - [ ] CHUNK-010 — Assigned-story injection into CONTEXT
@@ -840,7 +840,7 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **State left behind:** `main`, clean tree pending commit; model env vars ready for CHUNK-025 README sync.
 - **First step for next chunk (CHUNK-007):** Read CHUNK-007 spec; compute `LAZY_DEV_REL` from `SCRIPT_DIR` relative to `PROJECT_ROOT` and use it in CONTEXT path assembly; add `LAZY_DEV_PRINT_CONTEXT=1`.
 
-### CHUNK-007 — Derived paths (no hardcoded `.cursor/lazy-dev`) + `LAZY_DEV_PRINT_CONTEXT` (RESOLVED 2026-08-27 | commit TBD)
+### CHUNK-007 — Derived paths (no hardcoded `.cursor/lazy-dev`) + `LAZY_DEV_PRINT_CONTEXT` (RESOLVED 2026-08-27 | commit 6df4edd)
 - **Did:** `go.sh`: `PROJECT_ROOT` now uses `git rev-parse --show-toplevel` with `pwd -P` normalization; added `LAZY_DEV_REL` (relative install path, `.` when at repo root) and derived CONTEXT paths for PRD/progress/discovered; added `LAZY_DEV_PRINT_CONTEXT=1` stderr dump before agent launch. `prompt.md`, `commands/generate-prd.md`, `examples/prd.json` (notes only): replaced hardcoded `.cursor/lazy-dev` agent paths with Feature Context / `<lazy-dev>` phrasing; replaced `~/.cursor/rules/` with `.cursor/rules/ (if it exists in this project)`. Plus `HANDOVER.md` queue flip + this note.
 - **Deviations from spec:** `PROJECT_ROOT` now uses `git rev-parse --show-toplevel` instead of the fixed `SCRIPT_DIR/../..` heuristic — required for scratch-repo B (`tools/lazy-dev`) verification; falls back to the legacy heuristic outside a git repo.
 - **Gotchas:** (1) On macOS, `pwd -P` is required when computing `LAZY_DEV_REL` — `/tmp` vs `/private/tmp` otherwise yields absolute paths in CONTEXT. (2) When sourcing `go.sh` from another repo's cwd, `git rev-parse` resolves that repo's root, not lazy-dev's — run path tests from the scratch repo's lazy-dev directory (same as prior chunks). (3) `LAZY_DEV_REL=.` when lazy-dev is installed at the git root (e.g. this repo itself).
