@@ -1502,7 +1502,7 @@ run_iteration() {
 - Shared discovered patterns: $LAZY_DEV_DISCOVERED_PATH (READ these first - cross-feature learning)
 - Git Branch: $CURRENT_GIT_BRANCH
 
-# Git: git push is ABSOLUTELY FORBIDDEN (pre-push hook active). Full git policy is in the prompt below.
+# Git: git push is ABSOLUTELY FORBIDDEN (pre-push hook active). Stage only explicit file paths (no bulk staging). Full git policy is in the prompt below.
 
 $PROMPT_CONTENT
 

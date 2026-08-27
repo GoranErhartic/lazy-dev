@@ -138,7 +138,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-008 — Prompt/rules dedup (one canonical git policy, one commit-type table) (RESOLVED 2026-08-27, commit b529bd0)
 - [x] CHUNK-009 — Runner-inlined rule injection (deterministic protocol) (RESOLVED 2026-08-27, commit 31b8fc8)
 - [x] CHUNK-010 — Assigned-story injection into CONTEXT (RESOLVED 2026-08-27, commit 0f0bb02)
-- [ ] CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens)
+- [x] CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens) (RESOLVED 2026-08-27, commit pending)
 - [ ] CHUNK-012 — Read-only review contract + diff-range context for reviewers
 - [ ] CHUNK-013 — Stuck-story accounting (`attempts` / `blocked` / parked, exit 3)
 - [ ] CHUNK-014 — Dirty-tree / killed-iteration recovery
@@ -871,3 +871,11 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Scratch `/tmp/lazydev-chunk010`: PRD with priorities 5/1/3 → `LAZY_DEV_PRINT_CONTEXT=1` + fake agent shows `US-P1 — Priority One Story` in `## Your Assignment`; log `Story: US-P1 → Model: opus-4.6`. Scratch `/tmp/lazydev-chunk010-complete`: all `passes:true` → exit 0, "All stories completed", no Story/Model log, no agent launch.
 - **State left behind:** `main`, clean tree after commit; assignment injection ready for CHUNK-012 review-type CONTEXT additions.
 - **First step for next chunk (CHUNK-011):** Read CHUNK-011 spec; harden canonical git section in `prompt.md` (no `git add .`, expanded forbiddens) and align CONTEXT git one-liner.
+
+### CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens) (RESOLVED 2026-08-27 | commit pending)
+- **Did:** `prompt.md`: added Staging subsection (explicit paths only, NEVER `git add .`/`-A`); expanded forbidden list (push, reset --hard, bulk discards, clean, rebase, branch -D, amend except Final Story Hygiene); added foreign-changes rule. `go.sh`: CONTEXT git one-liner now mentions no bulk staging. Plus `HANDOVER.md` queue flip + this note.
+- **Deviations from spec:** none.
+- **Gotchas:** (1) CONTEXT one-liner avoids literal `git add .` so grep audit passes — staging rule lives in prompt.md. (2) Final Story Commit Hygiene `--amend` exception remains until CHUNK-015. (3) `git checkout -- <single-file>` for PRD restore (Files to Read First) is still allowed — forbidden list targets bulk tree discards only.
+- **Verification evidence:** `bash -n go.sh` → OK. Grep `git add .` in `prompt.md` + `go.sh` CONTEXT → only in prompt.md NEVER sentence. Forbidden families present: push, reset --hard, bulk discards (`checkout -- .`, `restore --staged`), clean, rebase, branch -D, amend (with exception). Foreign-changes rule present in prompt.md.
+- **State left behind:** `main`, clean tree pending commit.
+- **First step for next chunk (CHUNK-012):** Read CHUNK-012 spec; add read-only review contract to `prompt.md`, diff-range CONTEXT block in `run_iteration` for review stories, one line in `agent-loop.mdc`.

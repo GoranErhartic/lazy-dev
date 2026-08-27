@@ -45,20 +45,28 @@ For library documentation, use `mcp_context7_resolve-library-id` then `mcp_conte
 
 ## ⚠️ CRITICAL: Git Safety Policy
 
+### Staging
+Stage only the files you changed this iteration: `git add <file1> <file2> ...`. **NEVER** use `git add .` or `git add -A`.
+
 ### ✅ ALLOWED Git Commands:
-- `git add <files>` — Stage changes
+- `git add <file1> <file2> ...` — Stage only files you changed this iteration
 - `git commit -m "message"` — Commit changes locally
 - `git status` — Check status
 - `git diff` — View changes
 - `git log` — View history
 
 ### ❌ STRICTLY FORBIDDEN — NEVER USE:
-- `git push` — **ABSOLUTELY FORBIDDEN**
-- `git push origin <anything>` — **NEVER**
-- `git push --force` — **NEVER**
-- Any variation of push command — **BLOCKED**
+- `git push` (all forms) — **ABSOLUTELY FORBIDDEN**; pre-push hook blocks every push attempt
+- `git reset --hard` — destroys uncommitted work
+- Bulk discards — `git checkout -- .`, `git restore --staged .`, or any command that reverts the whole tree
+- `git clean -f` / `git clean -fd` — deletes untracked files
+- `git rebase` (any form) — rewrites history
+- `git branch -D` — force-deletes branches
+- `git commit --amend` — **except** the documented Final Story Commit Hygiene case below
 
-**WHY:** Work stays local until manually reviewed; a pre-push hook blocks all push attempts.
+**Foreign changes:** If the working tree contains changes you did not make, do not commit or revert them — note them in `progress.txt` and proceed with only your own files.
+
+**WHY:** Work stays local until manually reviewed; destructive git commands can vaporize the feature branch under unattended `--force` mode.
 
 ---
 
