@@ -65,6 +65,9 @@ while [[ "$1" == -* ]]; do
             echo "  LAZY_DEV_MAX_ITERATIONS=<n>  Maximum iterations (default: 20)"
             echo "  LAZY_DEV_FASTFAIL_SECS=<s>   Failed iterations shorter than this are not retried (default: 60; 0 disables)"
             echo "  LAZY_DEV_FAKE_AGENT=<path>   Test hook: run this executable instead of the Cursor CLI"
+            echo "  LAZY_DEV_MODEL_IMPL=<id>     Implementation story model (default: opus-4.6)"
+            echo "  LAZY_DEV_MODEL_REVIEW=<id>   First review story model (default: gpt-5.3-codex)"
+            echo "  LAZY_DEV_MODEL_REVIEW2=<id>  Second review story model (default: gemini-3-pro)"
             echo ""
             echo "To create a new feature:"
             echo "  mkdir -p features/<feature-name>"
@@ -104,6 +107,9 @@ if [ -z "$1" ]; then
     echo "  LAZY_DEV_MAX_ITERATIONS=<n>  Maximum iterations (default: 20)"
     echo "  LAZY_DEV_FASTFAIL_SECS=<s>   Failed iterations shorter than this are not retried (default: 60; 0 disables)"
     echo "  LAZY_DEV_FAKE_AGENT=<path>   Test hook: run this executable instead of the Cursor CLI"
+    echo "  LAZY_DEV_MODEL_IMPL=<id>     Implementation story model (default: opus-4.6)"
+    echo "  LAZY_DEV_MODEL_REVIEW=<id>   First review story model (default: gpt-5.3-codex)"
+    echo "  LAZY_DEV_MODEL_REVIEW2=<id>  Second review story model (default: gemini-3-pro)"
     echo ""
     echo "To create a new feature:"
     echo "  mkdir -p features/<feature-name>"
@@ -176,6 +182,19 @@ FASTFAIL_SECS="${LAZY_DEV_FASTFAIL_SECS:-60}"
 # launching a real agent. Example:
 #   LAZY_DEV_FAKE_AGENT=/path/to/fake-agent.sh ./go.sh my-feature
 LAZY_DEV_FAKE_AGENT="${LAZY_DEV_FAKE_AGENT:-}"
+
+# Per-type model overrides (consumed by get_model_for_story; per-story .model
+# field in prd.json still wins via resolve_model_for_story)
+LAZY_DEV_MODEL_IMPL="${LAZY_DEV_MODEL_IMPL:-opus-4.6}"
+LAZY_DEV_MODEL_REVIEW="${LAZY_DEV_MODEL_REVIEW:-gpt-5.3-codex}"
+LAZY_DEV_MODEL_REVIEW2="${LAZY_DEV_MODEL_REVIEW2:-gemini-3-pro}"
+
+# Set to 1 by main's fast-fail retry path to omit --model (CLI default)
+LAZY_DEV_FORCE_CLI_DEFAULT_MODEL=0
+
+# Whether the last run_iteration passed an explicit --model flag (for fast-fail
+# CLI-default retry in main)
+LAST_ITERATION_USED_EXPLICIT_MODEL=0
 
 # Unique session marker injected into each agent prompt; used for scoped
 # orphan cleanup (pkill -f on this marker only — never on PROJECT_ROOT).
@@ -976,16 +995,16 @@ get_model_for_story() {
 
     case "$story_id" in
         *-REVIEW-2)
-            echo "gemini-3-pro"
+            echo "$LAZY_DEV_MODEL_REVIEW2"
             ;;
         *-REVIEW)
-            echo "gpt-5.3-codex"
+            echo "$LAZY_DEV_MODEL_REVIEW"
             ;;
         *IMPL-RECS|*IMPLEMENT-RECS)
-            echo "opus-4.6"
+            echo "$LAZY_DEV_MODEL_IMPL"
             ;;
         *)
-            echo "opus-4.6"
+            echo "$LAZY_DEV_MODEL_IMPL"
             ;;
     esac
 }
@@ -1399,8 +1418,9 @@ EOF
 run_iteration() {
     local iteration=$1
     local start_time=$(date +%s)
-    # Reset the fast-fail input (main reads this after the call)
+    # Reset fast-fail / model-retry inputs (main reads these after the call)
     LAST_ITERATION_DURATION=0
+    LAST_ITERATION_USED_EXPLICIT_MODEL=0
     
     echo ""
     echo "═══════════════════════════════════════════════════════════════"
@@ -1484,12 +1504,17 @@ $PROMPT_CONTENT"
     # per-story "model" field in prd.json overrides type mapping when present
     local next_story_id
     next_story_id=$(get_next_story_id "$PRD_FILE")
-    local selected_model
-    selected_model=$(resolve_model_for_story "$PRD_FILE" "$next_story_id")
-    
-    if [ -n "$selected_model" ]; then
-        CURSOR_ARGS+=("--model" "$selected_model")
-        log_info "Story: ${BOLD}${next_story_id}${NC} → Model: ${BOLD}${selected_model}${NC}"
+    local selected_model=""
+
+    if [ "${LAZY_DEV_FORCE_CLI_DEFAULT_MODEL:-0}" = "1" ]; then
+        log_info "Story: ${BOLD}${next_story_id}${NC} → Model: ${BOLD}CLI default${NC} (--model omitted)"
+    else
+        selected_model=$(resolve_model_for_story "$PRD_FILE" "$next_story_id")
+        if [ -n "$selected_model" ]; then
+            CURSOR_ARGS+=("--model" "$selected_model")
+            LAST_ITERATION_USED_EXPLICIT_MODEL=1
+            log_info "Story: ${BOLD}${next_story_id}${NC} → Model: ${BOLD}${selected_model}${NC}"
+        fi
     fi
 
     local full_cmd="$CURSOR_CMD ${CURSOR_ARGS[*]} <prompt>"
@@ -1700,6 +1725,7 @@ main() {
         # Run iteration with retry logic
         local retry_count=0
         local iteration_success=0
+        LAZY_DEV_FORCE_CLI_DEFAULT_MODEL=0
         
         while [ $retry_count -lt $MAX_RETRIES ]; do
             if run_iteration $iteration; then
@@ -1712,7 +1738,15 @@ main() {
             # Fast-fail: a failed iteration that ended quickly is almost always
             # a config/auth/model error, not a transient one - do not retry it.
             # LAZY_DEV_FASTFAIL_SECS=0 disables fast-fail entirely.
+            # Exception: if we used an explicit --model, retry once with CLI default.
             if [ "$FASTFAIL_SECS" -gt 0 ] && [ "${LAST_ITERATION_DURATION:-0}" -lt "$FASTFAIL_SECS" ]; then
+                if [ "${LAST_ITERATION_USED_EXPLICIT_MODEL:-0}" -eq 1 ] && \
+                   [ "${LAZY_DEV_FORCE_CLI_DEFAULT_MODEL:-0}" -eq 0 ]; then
+                    log_warn "Fast-fail with explicit model - retrying once with CLI default (--model omitted)"
+                    LAZY_DEV_FORCE_CLI_DEFAULT_MODEL=1
+                    retry_count=$((retry_count - 1))
+                    continue
+                fi
                 log_error "Fast-fail: iteration $iteration failed after ${LAST_ITERATION_DURATION}s (< ${FASTFAIL_SECS}s) - not retrying (likely config/auth/model error)"
                 break
             fi

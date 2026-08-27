@@ -133,7 +133,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-003 — Bootstrap PRD validation + corrupted-PRD recovery (RESOLVED 2026-08-27, commit 07e340a)
 - [x] CHUNK-004 — Session-scoped process kills (replace `pkill -f` sweeps) (RESOLVED 2026-08-27, commit 38fb6cb)
 - [x] CHUNK-005 — Model selection by story type (Jira IDs) + per-story `model` field (RESOLVED 2026-08-27, commit 26c6655)
-- [ ] CHUNK-006 — Model env overrides + fallback to CLI default model
+- [x] CHUNK-006 — Model env overrides + fallback to CLI default model (RESOLVED 2026-08-27, commit pending)
 - [ ] CHUNK-007 — Derived paths (no hardcoded `.cursor/lazy-dev`) + `LAZY_DEV_PRINT_CONTEXT`
 - [ ] CHUNK-008 — Prompt/rules dedup (one canonical git policy, one commit-type table)
 - [ ] CHUNK-009 — Runner-inlined rule injection (deterministic protocol)
@@ -831,3 +831,11 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Source harness: `US-REVIEW`→gpt-5.3-codex, `US-REVIEW-2`→gemini-3-pro, `US-007`→opus-4.6, `MED-523-REVIEW`→gpt-5.3-codex, `MED-523-REVIEW-2`→gemini-3-pro, `MED-523-IMPL-RECS`→opus-4.6; temp PRD with `"model":"composer"` on next story → `resolve_model_for_story` returns `composer`. Scratch `/tmp/lazydev-chunk005` fake-agent run: `Story: MED-523-REVIEW → Model: gpt-5.3-codex`.
 - **State left behind:** `main`, clean tree pending commit; suffix helpers ready for CHUNK-006 env overrides and CHUNK-012 review-type detection.
 - **First step for next chunk (CHUNK-006):** Read CHUNK-006 spec; add `LAZY_DEV_MODEL_IMPL`/`REVIEW`/`REVIEW2` env vars to `get_model_for_story` and the fast-fail CLI-default retry in `main`.
+
+### CHUNK-006 — Model env overrides + fallback to CLI default model (RESOLVED 2026-08-27 | commit pending)
+- **Did:** `go.sh`: added `LAZY_DEV_MODEL_IMPL`/`LAZY_DEV_MODEL_REVIEW`/`LAZY_DEV_MODEL_REVIEW2` env vars (defaults `opus-4.6`, `gpt-5.3-codex`, `gemini-3-pro`) consumed by `get_model_for_story`; per-story `.model` still wins via `resolve_model_for_story`. Added `LAZY_DEV_FORCE_CLI_DEFAULT_MODEL` global + `LAST_ITERATION_USED_EXPLICIT_MODEL` tracking; `run_iteration` omits `--model` when force flag set and logs "CLI default". `main` fast-fail path: if failure used explicit model, retry once with CLI default before breaking. Added three model env vars to both `--help` blocks. Plus `HANDOVER.md` queue flip + this note.
+- **Deviations from spec:** none.
+- **Gotchas:** (1) CLI-default retry decrements `retry_count` so the fast-fail retry does not consume a backoff slot. (2) `LAZY_DEV_FORCE_CLI_DEFAULT_MODEL` is reset to 0 at the start of each outer iteration. (3) Per-story `.model` override still bypasses env vars — fast-fail CLI-default retry still fires if an explicit `--model` was passed (including per-story override).
+- **Verification evidence:** `bash -n go.sh` → OK. Source harness: `LAZY_DEV_MODEL_IMPL=foo get_model_for_story "US-001"` → `foo`. Scratch `/tmp/lazydev-chunk006`: PRD next story `MED-523-REVIEW`, fake agent fast-fails (sleep 2, `is_error:true`, exit 1), `--verbose --max-iterations 1` → attempt 1 debug log shows `--model gpt-5.3-codex`; `Fast-fail with explicit model - retrying once with CLI default`; attempt 2 log shows `Model: CLI default (--model omitted)` and debug `Executing: .../fail.sh -p --force ...` with **no** `--model`; second fast-fail stops with no further retry.
+- **State left behind:** `main`, clean tree pending commit; model env vars ready for CHUNK-025 README sync.
+- **First step for next chunk (CHUNK-007):** Read CHUNK-007 spec; compute `LAZY_DEV_REL` from `SCRIPT_DIR` relative to `PROJECT_ROOT` and use it in CONTEXT path assembly; add `LAZY_DEV_PRINT_CONTEXT=1`.
