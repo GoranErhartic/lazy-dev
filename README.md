@@ -238,6 +238,14 @@ Every PRD should include these final stories (in priority order):
 
 The loop runner monitors the PRD state automatically and stops when all stories have `passes: true`. No special signal is required from the agent.
 
+## Resuming a feature
+
+Re-running `./go.sh <feature>` for an existing feature checks out the feature branch again but **does not rebase** onto `main` when the branch already has commits beyond `main` — your branch tip stays put so resume is predictable.
+
+To pull in latest `main` anyway, pass **`--rebase`**. If the rebase hits conflicts, the runner aborts the rebase and exits with an error (it does not continue on a stale base).
+
+Before switching branches, `go.sh` may stash uncommitted changes under the lazy-dev install directory. If `git stash pop` fails or critical files (`prd.json`, `prompt.md`, `examples/`) are missing after branch setup, the runner exits with guidance to run `git stash list` / `git stash pop` and resolve conflicts, then re-run.
+
 ## Archiving
 
 When a feature's branch changes, previous state is archived:

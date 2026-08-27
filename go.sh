@@ -31,6 +31,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
 
 # Parse flags
 VERBOSE=""
+FORCE_REBASE=0
 while [[ "$1" == -* ]]; do
         case "$1" in
         --verbose|-v)
@@ -42,12 +43,17 @@ while [[ "$1" == -* ]]; do
             MAX_ITERATIONS="$1"
             shift
             ;;
+        --rebase)
+            FORCE_REBASE=1
+            shift
+            ;;
         --help|-h)
             echo "Usage: ./go.sh [OPTIONS] <feature-name>"
             echo ""
             echo "Options:"
             echo "  --verbose, -v          Enable verbose/debug output"
             echo "  --max-iterations N     Set maximum iterations (default: 20)"
+            echo "  --rebase               Rebase an existing feature branch onto latest main (default: skip when branch has commits)"
             echo "  --help, -h             Show this help message"
             echo ""
             echo "Runs continuously until ALL user stories in PRD have passes: true."
@@ -96,6 +102,7 @@ if [ -z "$1" ]; then
     echo "Options:"
     echo "  --verbose, -v          Enable verbose/debug output"
     echo "  --max-iterations N     Set maximum iterations (default: 20)"
+    echo "  --rebase               Rebase an existing feature branch onto latest main (default: skip when branch has commits)"
     echo "  --help, -h             Show this help message"
     echo ""
     echo "Runs continuously until ALL user stories in PRD have passes: true."
@@ -1964,6 +1971,29 @@ pop_lazy_dev_stash() {
     fi
 }
 
+# After branch setup + stash pop, ensure lazy-dev files are present (CHUNK-022)
+verify_lazy_dev_files_after_branch_setup() {
+    local missing=0
+
+    if [ ! -f "$PRD_FILE" ]; then
+        log_error "PRD file not found after branch setup: $PRD_FILE"
+        missing=1
+    fi
+    if [ ! -f "$PROMPT_FILE" ]; then
+        log_error "Prompt file not found after branch setup: $PROMPT_FILE"
+        missing=1
+    fi
+    if [ ! -d "$SCRIPT_DIR/examples" ]; then
+        log_error "examples/ directory not found after branch setup: $SCRIPT_DIR/examples"
+        missing=1
+    fi
+
+    if [ "$LAZY_DEV_FILES_STASHED" = "1" ] || [ "$missing" = "1" ]; then
+        log_error "lazy-dev files remain in the stash — run \`git stash list\` / \`git stash pop\` and resolve, then re-run"
+        exit 1
+    fi
+}
+
 # ═══════════════════════════════════════════════════════════════════════════
 # GIT BRANCH SETUP: Always branch from latest main
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2079,13 +2109,25 @@ setup_feature_branch() {
         log_warn "Branch '$branch_name' already exists."
         log_info "Switching to existing branch..."
         git checkout "$branch_name" --quiet
-        
-        # Optionally rebase on latest main
-        log_info "Rebasing on latest $main_branch..."
-        git rebase "$main_branch" --quiet 2>/dev/null || {
-            log_warn "Rebase had conflicts. Aborting rebase."
-            git rebase --abort 2>/dev/null || true
-        }
+
+        local commits_beyond_main
+        commits_beyond_main=$(git rev-list "$main_branch"..HEAD --count 2>/dev/null || echo "0")
+
+        if [ "${FORCE_REBASE:-0}" = "1" ]; then
+            log_info "Rebasing on latest $main_branch (--rebase)..."
+            if ! git rebase "$main_branch" 2>/dev/null; then
+                log_error "Rebase onto $main_branch failed due to conflicts."
+                log_info "Resolve conflicts manually, then re-run (or use --rebase after fixing)."
+                git rebase --abort 2>/dev/null || true
+                pop_lazy_dev_stash
+                exit 1
+            fi
+            log_success "Rebased onto latest $main_branch"
+        elif [ "$commits_beyond_main" -gt 0 ]; then
+            log_info "Feature branch has $commits_beyond_main commit(s) beyond $main_branch — skipping rebase (pass --rebase to rebase onto latest $main_branch)"
+        else
+            log_info "Feature branch exists with no commits beyond $main_branch"
+        fi
     else
         # Create new feature branch from main
         log_info "Creating new branch: $branch_name"
@@ -2096,7 +2138,8 @@ setup_feature_branch() {
     
     # Restore stashed lazy-dev folder files
     pop_lazy_dev_stash
-    
+    verify_lazy_dev_files_after_branch_setup
+
     # Install push blocker
     install_push_blocker
     

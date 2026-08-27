@@ -149,7 +149,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-019 — Stall watchdog + parser polish (dead code, color leak, shape warnings) (RESOLVED 2026-08-27, commit aeffb94)
 - [x] CHUNK-020 — Cost / time budget breaker (exit 2) (RESOLVED 2026-08-27, 3a2aab8)
 - [x] CHUNK-021 — Branch-name source of truth (PRD `branchName` wins) (RESOLVED 2026-08-27)
-- [ ] CHUNK-022 — Safe resume semantics (rebase opt-in, stash-pop re-verify)
+- [x] CHUNK-022 — Safe resume semantics (rebase opt-in, stash-pop re-verify) (RESOLVED 2026-08-27)
 - [ ] CHUNK-023 — CLI surface polish (help text, naming, `printf`)
 - [ ] CHUNK-024 — `generate-prd` fixes (command discoverability + content errors)
 - [ ] CHUNK-025 — Template + README synchronization
@@ -959,3 +959,11 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Source harness: `branchName: feature/MED-123_x` → `feature/MED-123_x`; `totally-bogus` → warn + `feature/x`; absent → `feature/x`; `fix/MED-99` → `fix/MED-99`. Scratch `/tmp/lazydev-chunk021`: PRD `feature/MED-123_x` → checkout `feature/MED-123_x`. `/tmp/lazydev-chunk021b2`: bogus prefix → warn + `feature/y`. `/tmp/lazydev-chunk021c`: no `branchName` → `feature/z`. `/tmp/lazydev-chunk021-archive`: `.last-branch`=`feature/old`, PRD `feature/new` → `Archiving previous run: feature/old`, archive folder created, `.last-branch` updated to `feature/new`.
 - **State left behind:** `main`, `.scratch/` untracked; scratch dirs `/tmp/lazydev-chunk021*` for cleanup.
 - **First step for next chunk (CHUNK-022):** Read CHUNK-022 spec; skip rebase on resume by default, add `--rebase` flag, re-verify files after `pop_lazy_dev_stash`.
+
+### CHUNK-022 — Safe resume semantics (rebase opt-in, stash-pop re-verify) (RESOLVED 2026-08-27)
+- **Did:** `go.sh`: added `--rebase` flag (parsed before globals overwrite); `setup_feature_branch` skips rebase when feature branch has commits beyond `main` unless `--rebase`; rebase conflicts abort + `exit 1`; added `verify_lazy_dev_files_after_branch_setup` after `pop_lazy_dev_stash` (missing `PRD_FILE`/`PROMPT_FILE`/`examples/` or stash still pending → stash guidance + `exit 1`). `README.md`: added "Resuming a feature" subsection. Plus `HANDOVER.md` queue flip + this note.
+- **Deviations from spec:** Also treat `LAZY_DEV_FILES_STASHED=1` after failed `git stash pop` as fatal (even if branch copies of files exist) — matches the spec's stash guidance and prevents starting the loop with a pending stash.
+- **Gotchas:** (1) `FORCE_REBASE` must be initialized in the CLI parsing block only — a later `FORCE_REBASE=0` global reset silently disabled `--rebase` during testing. (2) `cleanup` trap preserves `exit 1` from branch setup failures. (3) CHUNK-023 will consolidate duplicated `--help` text and may add `--rebase` there too.
+- **Verification evidence:** `bash -n go.sh` → OK. Scratch `/tmp/lazydev-chunk022b`: 3 commits beyond `main`, re-run without `--rebase` → log `skipping rebase`, branch tip unchanged (`29f9924…`). `/tmp/lazydev-chunk022-rebase2`: `--rebase` with conflicting README → `Rebasing on latest main (--rebase)`, `Rebase onto main failed due to conflicts`, `rebase_exit=1`, reflog shows `rebase (start)` + `rebase (abort)`. `/tmp/lazydev-chunk022-stash2`: conflicting `prompt.md` stash pop → `lazy-dev files remain in the stash`, `stash_exit=1`, no iteration banner.
+- **State left behind:** `main`, `.scratch/` untracked; scratch dirs `/tmp/lazydev-chunk022*` for cleanup.
+- **First step for next chunk (CHUNK-023):** Read CHUNK-023 spec; extract `print_usage()`, fix `MAX_ITERATIONS` in help after flag parse, rename `USE_CURSOR_AGENT_SUBCOMMAND`.
