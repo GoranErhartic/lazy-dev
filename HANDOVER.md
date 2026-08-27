@@ -148,7 +148,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-018 — Context bloat caps + "data, not commands" framing (RESOLVED 2026-08-27, commit 34fc7b2)
 - [x] CHUNK-019 — Stall watchdog + parser polish (dead code, color leak, shape warnings) (RESOLVED 2026-08-27, commit aeffb94)
 - [x] CHUNK-020 — Cost / time budget breaker (exit 2) (RESOLVED 2026-08-27, 3a2aab8)
-- [ ] CHUNK-021 — Branch-name source of truth (PRD `branchName` wins)
+- [x] CHUNK-021 — Branch-name source of truth (PRD `branchName` wins) (RESOLVED 2026-08-27)
 - [ ] CHUNK-022 — Safe resume semantics (rebase opt-in, stash-pop re-verify)
 - [ ] CHUNK-023 — CLI surface polish (help text, naming, `printf`)
 - [ ] CHUNK-024 — `generate-prd` fixes (command discoverability + content errors)
@@ -951,3 +951,11 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Source harness: `parse_agent_output` pipe with `duration_ms=42000`, `total_cost_usd=1.25` → `iteration=3 duration_s=42 cost=1.25`. Scratch `/tmp/lazydev-chunk020-cost`: `LAZY_DEV_MAX_COST=0.10`, cost fake agent (0.07/iter) ×2 → exit **2**, `Cost limit: $0.10 exceeded`, stats `0.07+0.07`. Scratch `/tmp/lazydev-chunk020`: `LAZY_DEV_MAX_MINUTES=1`, slow fake (5×1s ticks + `duration_ms=125000`) → exit **2**, `Time limit: 1m exceeded`, `Cumulative duration: 2m 5s (125s)`, state commit present.
 - **State left behind:** `main`, `.scratch/` untracked; scratch dirs `/tmp/lazydev-chunk020*` for cleanup.
 - **First step for next chunk (CHUNK-021):** Read CHUNK-021 spec; make `setup_feature_branch` use PRD `branchName` as source of truth.
+
+### CHUNK-021 — Branch-name source of truth (PRD `branchName` wins) (RESOLVED 2026-08-27)
+- **Did:** `go.sh` only: added `is_sane_branch_name` + `resolve_feature_branch_name` (PRD `branchName` wins when prefix is `feature/`, `fix/`, `hotfix/`, `lazy/`, or `dev/`; warn + fallback to `feature/$FEATURE_NAME` otherwise); `setup_feature_branch` uses resolver; `track_branch` records `git branch --show-current`; `archive_previous_run` compares actual git branch vs `.last-branch`. Plus `HANDOVER.md` queue flip + this note.
+- **Deviations from spec:** Bogus-prefix warning redirected to stderr (`>&2`) so it is not captured when `resolve_feature_branch_name` runs inside `branch_name=$(...)` — without this, `git checkout -b` received the warn text as the branch name.
+- **Gotchas:** (1) `verify_setup` runs before `setup_feature_branch`, so PRD is validated before branch resolution. (2) Archive folder naming still strips `feature/`, `lazy/`, `dev/` prefixes from the *previous* actual branch name. (3) CHUNK-022 will change rebase-on-resume behavior in the same `setup_feature_branch` function.
+- **Verification evidence:** `bash -n go.sh` → OK. Source harness: `branchName: feature/MED-123_x` → `feature/MED-123_x`; `totally-bogus` → warn + `feature/x`; absent → `feature/x`; `fix/MED-99` → `fix/MED-99`. Scratch `/tmp/lazydev-chunk021`: PRD `feature/MED-123_x` → checkout `feature/MED-123_x`. `/tmp/lazydev-chunk021b2`: bogus prefix → warn + `feature/y`. `/tmp/lazydev-chunk021c`: no `branchName` → `feature/z`. `/tmp/lazydev-chunk021-archive`: `.last-branch`=`feature/old`, PRD `feature/new` → `Archiving previous run: feature/old`, archive folder created, `.last-branch` updated to `feature/new`.
+- **State left behind:** `main`, `.scratch/` untracked; scratch dirs `/tmp/lazydev-chunk021*` for cleanup.
+- **First step for next chunk (CHUNK-022):** Read CHUNK-022 spec; skip rebase on resume by default, add `--rebase` flag, re-verify files after `pop_lazy_dev_stash`.

@@ -1968,9 +1968,44 @@ pop_lazy_dev_stash() {
 # GIT BRANCH SETUP: Always branch from latest main
 # ═══════════════════════════════════════════════════════════════════════════
 
+# True when branch name uses an allowed prefix (feature/, fix/, hotfix/, lazy/, dev/)
+is_sane_branch_name() {
+    local name="$1"
+    case "$name" in
+        feature/*|fix/*|hotfix/*|lazy/*|dev/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# PRD branchName wins when present and sane; otherwise feature/<feature_name>
+resolve_feature_branch_name() {
+    local feature_name="$1"
+    local prd_file="${2:-$PRD_FILE}"
+    local fallback="feature/$feature_name"
+    local prd_branch=""
+
+    if [ -f "$prd_file" ]; then
+        prd_branch=$(jq -r '.branchName // empty' "$prd_file" 2>/dev/null || echo "")
+    fi
+
+    if [ -z "$prd_branch" ]; then
+        echo "$fallback"
+        return 0
+    fi
+
+    if is_sane_branch_name "$prd_branch"; then
+        echo "$prd_branch"
+        return 0
+    fi
+
+    log_warn "PRD branchName '$prd_branch' has unrecognized prefix; using $fallback" >&2
+    echo "$fallback"
+}
+
 setup_feature_branch() {
     local feature_name="$1"
-    local branch_name="feature/$feature_name"
+    local branch_name
+    branch_name=$(resolve_feature_branch_name "$feature_name")
     
     # Verify we're in a git repository
     if ! git rev-parse --git-dir &>/dev/null; then
@@ -2128,16 +2163,17 @@ verify_setup() {
 
 # Archive previous run if branch changed
 archive_previous_run() {
-    if [ -f "$PRD_FILE" ] && [ -f "$LAST_BRANCH_FILE" ]; then
-        CURRENT_BRANCH=$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")
-        LAST_BRANCH=$(cat "$LAST_BRANCH_FILE" 2>/dev/null || echo "")
+    if [ -f "$LAST_BRANCH_FILE" ]; then
+        local current_branch last_branch
+        current_branch=$(git branch --show-current 2>/dev/null || echo "")
+        last_branch=$(cat "$LAST_BRANCH_FILE" 2>/dev/null || echo "")
 
-        if [ -n "$CURRENT_BRANCH" ] && [ -n "$LAST_BRANCH" ] && [ "$CURRENT_BRANCH" != "$LAST_BRANCH" ]; then
+        if [ -n "$current_branch" ] && [ -n "$last_branch" ] && [ "$current_branch" != "$last_branch" ]; then
             DATE=$(date +%Y-%m-%d)
-            FOLDER_NAME=$(echo "$LAST_BRANCH" | sed 's|^feature/||; s|^lazy/||; s|^dev/||; s|/|_|g')
+            FOLDER_NAME=$(echo "$last_branch" | sed 's|^feature/||; s|^lazy/||; s|^dev/||; s|/|_|g')
             ARCHIVE_FOLDER="$ARCHIVE_DIR/$DATE-$FOLDER_NAME"
 
-            log_info "Archiving previous run: $LAST_BRANCH"
+            log_info "Archiving previous run: $last_branch"
             mkdir -p "$ARCHIVE_FOLDER"
             [ -f "$PRD_FILE" ] && cp "$PRD_FILE" "$ARCHIVE_FOLDER/"
             [ -f "$PROGRESS_FILE" ] && cp "$PROGRESS_FILE" "$ARCHIVE_FOLDER/"
@@ -2150,13 +2186,12 @@ archive_previous_run() {
     fi
 }
 
-# Track current branch
+# Track current branch (actual git branch, not PRD field)
 track_branch() {
-    if [ -f "$PRD_FILE" ]; then
-        CURRENT_BRANCH=$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")
-        if [ -n "$CURRENT_BRANCH" ]; then
-            echo "$CURRENT_BRANCH" > "$LAST_BRANCH_FILE"
-        fi
+    local current_branch
+    current_branch=$(git branch --show-current 2>/dev/null || echo "")
+    if [ -n "$current_branch" ]; then
+        echo "$current_branch" > "$LAST_BRANCH_FILE"
     fi
 }
 
