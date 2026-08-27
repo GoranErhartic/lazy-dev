@@ -132,7 +132,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-002 — Fail-safe PRD completion predicate (shared jq, `passes != true`) (RESOLVED 2026-08-27, commit 32eefa6)
 - [x] CHUNK-003 — Bootstrap PRD validation + corrupted-PRD recovery (RESOLVED 2026-08-27, commit 07e340a)
 - [x] CHUNK-004 — Session-scoped process kills (replace `pkill -f` sweeps) (RESOLVED 2026-08-27, commit 38fb6cb)
-- [ ] CHUNK-005 — Model selection by story type (Jira IDs) + per-story `model` field
+- [x] CHUNK-005 — Model selection by story type (Jira IDs) + per-story `model` field (RESOLVED 2026-08-27, commit pending)
 - [ ] CHUNK-006 — Model env overrides + fallback to CLI default model
 - [ ] CHUNK-007 — Derived paths (no hardcoded `.cursor/lazy-dev`) + `LAZY_DEV_PRINT_CONTEXT`
 - [ ] CHUNK-008 — Prompt/rules dedup (one canonical git policy, one commit-type table)
@@ -823,3 +823,11 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Grep: zero `pkill -9 -f "cursor-agent.*$PROJECT_ROOT"` remains. Scratch `/tmp/lazydev-chunk004`: decoy `exec -a "cursor-agent $SCRATCH" sleep 300` (no marker) → `cleanup_iteration` → **survived** (PID 13201); decoy with marker `lazydev-testmarker-die123` → **killed**; fake-agent run (`LAZY_DEV_FAKE_AGENT`, `--max-iterations 1`) → "Iteration complete", `pgrep` for fake agent → empty (no orphans).
 - **State left behind:** `main`, clean tree pending commit; `kill_session_orphans` + session marker ready for CHUNK-026 E2E decoy test.
 - **First step for next chunk (CHUNK-005):** Read CHUNK-005 spec; start with suffix-based matching in `get_model_for_story` (`*-REVIEW-2` before `*-REVIEW`).
+
+### CHUNK-005 — Model selection by story type (Jira IDs) + per-story `model` field (RESOLVED 2026-08-27 | commit pending)
+- **Did:** `go.sh`: rewrote `get_model_for_story` for suffix-based type matching (`*-REVIEW-2` before `*-REVIEW`, then `*IMPL-RECS`/`*IMPLEMENT-RECS`); added `get_story_model_override` + `resolve_model_for_story` (per-story `.model` in prd.json overrides type mapping); `run_iteration` now calls `resolve_model_for_story`; broadened parser story-banner regex to `(US|[A-Z]{2,10}-[0-9]{3,})-[A-Z0-9-]+`. `prompt.md`: dual-model table notes Jira-prefixed ids and suffix mapping. Plus `HANDOVER.md` queue flip + this note.
+- **Deviations from spec:** none.
+- **Gotchas:** (1) Bash `case` suffix patterns are ordered — `*-REVIEW-2` must stay above `*-REVIEW` or `US-REVIEW-2` would get the first-review model. (2) `resolve_model_for_story` is the call site for model selection; CHUNK-006 will add env overrides inside `get_model_for_story` without changing the override precedence (per-story `.model` still wins).
+- **Verification evidence:** `bash -n go.sh` → OK. Source harness: `US-REVIEW`→gpt-5.3-codex, `US-REVIEW-2`→gemini-3-pro, `US-007`→opus-4.6, `MED-523-REVIEW`→gpt-5.3-codex, `MED-523-REVIEW-2`→gemini-3-pro, `MED-523-IMPL-RECS`→opus-4.6; temp PRD with `"model":"composer"` on next story → `resolve_model_for_story` returns `composer`. Scratch `/tmp/lazydev-chunk005` fake-agent run: `Story: MED-523-REVIEW → Model: gpt-5.3-codex`.
+- **State left behind:** `main`, clean tree pending commit; suffix helpers ready for CHUNK-006 env overrides and CHUNK-012 review-type detection.
+- **First step for next chunk (CHUNK-006):** Read CHUNK-006 spec; add `LAZY_DEV_MODEL_IMPL`/`REVIEW`/`REVIEW2` env vars to `get_model_for_story` and the fast-fail CLI-default retry in `main`.

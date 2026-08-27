@@ -256,9 +256,11 @@ The lazy-dev loop uses **different AI models** for different story types to maxi
 | Story ID | Model | Purpose |
 |----------|-------|---------|
 | US-001 to US-NNN | Opus 4.6 | Implementation stories |
-| US-REVIEW | GPT 5.3 Codex | First code review |
-| US-REVIEW-2 | Gemini 3 Pro | Second code review |
-| US-IMPLEMENT-RECS | Opus 4.6 | Implement review findings |
+| *-REVIEW (e.g. US-REVIEW, MED-523-REVIEW) | GPT 5.3 Codex | First code review |
+| *-REVIEW-2 (e.g. US-REVIEW-2, MED-523-REVIEW-2) | Gemini 3 Pro | Second code review |
+| *IMPL-RECS / *IMPLEMENT-RECS | Opus 4.6 | Implement review findings |
+
+Story IDs may be Jira-prefixed (e.g. `MED-523-REVIEW`); the loop selects models by **suffix**, not the literal `US-*` id.
 
 ### Code Review Output Files
 

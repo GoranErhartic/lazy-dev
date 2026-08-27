@@ -430,7 +430,7 @@ parse_agent_output() {
                         
                         # Check for user story pattern (US-XXX) and display banner if new story
                         local story_match
-                        story_match=$(echo "$content" | grep -oE 'US-[A-Z0-9-]+' | head -1)
+                        story_match=$(echo "$content" | grep -oE '(US|[A-Z]{2,10}-[0-9]{3,})-[A-Z0-9-]+' | head -1)
                         if [ -n "$story_match" ] && [ "$story_match" != "$current_story" ]; then
                             current_story="$story_match"
                             # End any previous streaming block before banner
@@ -964,26 +964,58 @@ validate_prd() {
     return 0
 }
 
-# Get the appropriate model for a specific story ID
+# Get the appropriate model for a specific story ID (type/suffix mapping)
 # Usage: model=$(get_model_for_story "$story_id")
+# Suffix order matters: *-REVIEW-2 is checked before *-REVIEW.
 # Returns:
-#   - gpt-5.3-codex for US-REVIEW (first code review)
-#   - gemini-3-pro for US-REVIEW-2 (second code review)
-#   - opus-4.6 for all other stories (implementation)
+#   - gpt-5.3-codex for *-REVIEW (first code review)
+#   - gemini-3-pro for *-REVIEW-2 (second code review)
+#   - opus-4.6 for *IMPL-RECS, *IMPLEMENT-RECS, and all other stories
 get_model_for_story() {
     local story_id="$1"
-    
+
     case "$story_id" in
-        "US-REVIEW")
+        *-REVIEW-2)
+            echo "gemini-3-pro"
+            ;;
+        *-REVIEW)
             echo "gpt-5.3-codex"
             ;;
-        "US-REVIEW-2")
-            echo "gemini-3-pro"
+        *IMPL-RECS|*IMPLEMENT-RECS)
+            echo "opus-4.6"
             ;;
         *)
             echo "opus-4.6"
             ;;
     esac
+}
+
+
+# Get per-story model override from PRD (empty string if absent or unset)
+# Usage: override=$(get_story_model_override "$PRD_FILE" "$story_id")
+get_story_model_override() {
+    local prd_file="$1"
+    local story_id="$2"
+
+    jq -r --arg id "$story_id" '
+        [.userStories[]? | select(.id == $id) | .model // ""] | .[0] // ""
+    ' "$prd_file" 2>/dev/null || true
+}
+
+# Resolve model for a story: per-story .model field wins, else suffix/type mapping
+# Usage: model=$(resolve_model_for_story "$PRD_FILE" "$story_id")
+resolve_model_for_story() {
+    local prd_file="$1"
+    local story_id="$2"
+    local override
+
+    override=$(get_story_model_override "$prd_file" "$story_id")
+    if [ -n "$override" ]; then
+        echo "$override"
+        return 0
+    fi
+
+    get_model_for_story "$story_id"
 }
 
 
@@ -1448,13 +1480,12 @@ $PROMPT_CONTENT"
     CURSOR_ARGS+=("-p" "--force" "--output-format" "stream-json" "--workspace" "$PROJECT_ROOT")
 
     # Select appropriate model based on the next story to be processed
-    # - US-REVIEW: GPT 5.3 Codex (first code review)
-    # - US-REVIEW-2: Gemini 3 Pro (second code review)
-    # - All other stories: Opus 4.6 (implementation)
+    # Suffix mapping: *-REVIEW → first review model; *-REVIEW-2 → second review model;
+    # per-story "model" field in prd.json overrides type mapping when present
     local next_story_id
     next_story_id=$(get_next_story_id "$PRD_FILE")
     local selected_model
-    selected_model=$(get_model_for_story "$next_story_id")
+    selected_model=$(resolve_model_for_story "$PRD_FILE" "$next_story_id")
     
     if [ -n "$selected_model" ]; then
         CURSOR_ARGS+=("--model" "$selected_model")
