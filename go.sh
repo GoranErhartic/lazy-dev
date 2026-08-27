@@ -840,6 +840,10 @@ log_process_count() {
     fi
 }
 
+# Canonical jq filter fragment: story is incomplete when passes is not strictly true
+# (missing, null, false, string "true", etc.)
+PRD_INCOMPLETE_STORY='select(.passes != true)'
+
 # Get story counts from PRD: returns "completed/total" format
 # Usage: counts=$(get_story_counts "$PRD_FILE")
 get_story_counts() {
@@ -851,8 +855,8 @@ get_story_counts() {
     fi
     
     local total completed
-    total=$(jq '[.userStories[]] | length' "$prd_file" 2>/dev/null || echo "0")
-    completed=$(jq '[.userStories[] | select(.passes == true)] | length' "$prd_file" 2>/dev/null || echo "0")
+    total=$(jq '[.userStories[]?] | length' "$prd_file" 2>/dev/null || echo "0")
+    completed=$(jq '[.userStories[]? | select(.passes == true)] | length' "$prd_file" 2>/dev/null || echo "0")
     
     echo "${completed}/${total}"
 }
@@ -865,12 +869,16 @@ verify_all_stories_complete() {
         return 1
     fi
     
-    # Count stories with passes: false
-    local incomplete_count
-    incomplete_count=$(jq '[.userStories[] | select(.passes == false)] | length' "$prd_file" 2>/dev/null || echo "-1")
+    local total incomplete_count
+    total=$(jq '(.userStories | if type == "array" then length else 0 end)' "$prd_file" 2>/dev/null || echo "-1")
+    incomplete_count=$(jq "[.userStories[]? | $PRD_INCOMPLETE_STORY] | length" "$prd_file" 2>/dev/null || echo "-1")
     
-    if [ "$incomplete_count" = "-1" ]; then
+    if [ "$total" = "-1" ] || [ "$incomplete_count" = "-1" ]; then
         return 1
+    fi
+    
+    if [ "$total" -eq 0 ]; then
+        return 1  # Empty PRD is never complete
     fi
     
     if [ "$incomplete_count" -gt 0 ]; then
@@ -880,7 +888,7 @@ verify_all_stories_complete() {
     return 0  # All stories complete
 }
 
-# Get the next story ID (highest priority with passes: false)
+# Get the next story ID (highest priority incomplete story)
 # Usage: next_story=$(get_next_story_id "$PRD_FILE")
 get_next_story_id() {
     local prd_file="$1"
@@ -890,7 +898,7 @@ get_next_story_id() {
         return
     fi
     
-    jq -r '[.userStories[] | select(.passes == false)] | sort_by(.priority) | .[0].id // ""' "$prd_file" 2>/dev/null
+    jq -r "[.userStories[]? | $PRD_INCOMPLETE_STORY] | sort_by(.priority) | .[0].id // \"\"" "$prd_file" 2>/dev/null || true
 }
 
 # Get the appropriate model for a specific story ID
