@@ -129,7 +129,7 @@ dual-model review) is sound. The review found six critical (P0) problems, nine h
 Work top to bottom. First `- [ ]` line = your chunk.
 
 - [x] CHUNK-001 — Failure detection: pipefail + is_error + real exit codes (+ test hooks) (RESOLVED 2026-08-25, commit b4dea7a)
-- [x] CHUNK-002 — Fail-safe PRD completion predicate (shared jq, `passes != true`) (RESOLVED 2026-08-27, commit PENDING)
+- [x] CHUNK-002 — Fail-safe PRD completion predicate (shared jq, `passes != true`) (RESOLVED 2026-08-27, commit 32eefa6)
 - [ ] CHUNK-003 — Bootstrap PRD validation + corrupted-PRD recovery
 - [ ] CHUNK-004 — Session-scoped process kills (replace `pkill -f` sweeps)
 - [ ] CHUNK-005 — Model selection by story type (Jira IDs) + per-story `model` field
@@ -800,7 +800,7 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **State left behind:** `main`, clean tree after commit; `go.sh` is source-safe — the source harness works for all later chunks. Scratch dirs `/tmp/lazydev-t1`, `/tmp/lazydev-t1-fake`, `/tmp/stdbuf-probe.sh` removed; no leftover processes.
 - **First step for next chunk (CHUNK-002):** Read the CHUNK-002 spec; start with the shared `passes != true` jq predicate used by `verify_all_stories_complete`/`get_next_story_id`/`get_story_counts`.
 
-### CHUNK-002 — Fail-safe PRD completion predicate (RESOLVED 2026-08-27 | commit PENDING)
+### CHUNK-002 — Fail-safe PRD completion predicate (RESOLVED 2026-08-27 | commit 32eefa6)
 - **Did:** `go.sh` only: added canonical `PRD_INCOMPLETE_STORY='select(.passes != true)'` jq fragment; updated `verify_all_stories_complete` (complete only when PRD parses, `userStories` is a non-empty array, and zero incomplete stories), `get_story_counts` (safe `userStories[]?` optional iterator; total = array length regardless of passes), and `get_next_story_id` (incomplete predicate + `|| true` on parse failure). Plus `HANDOVER.md` queue flip + this note.
 - **Deviations from spec:** none.
 - **Gotchas:** (1) Test harnesses must `set +e` **after** sourcing `go.sh` — sourcing re-enables `set -e`, so calling `verify_all_stories_complete` on an incomplete PRD aborts the shell otherwise. (2) `userStories[]?` handles missing `userStories` gracefully in counts/next-id; `verify_all_stories_complete` treats non-array or empty array as incomplete via explicit length check.
