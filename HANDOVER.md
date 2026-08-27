@@ -138,7 +138,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-008 — Prompt/rules dedup (one canonical git policy, one commit-type table) (RESOLVED 2026-08-27, commit b529bd0)
 - [x] CHUNK-009 — Runner-inlined rule injection (deterministic protocol) (RESOLVED 2026-08-27, commit 31b8fc8)
 - [x] CHUNK-010 — Assigned-story injection into CONTEXT (RESOLVED 2026-08-27, commit 0f0bb02)
-- [x] CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens) (RESOLVED 2026-08-27, commit pending)
+- [x] CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens) (RESOLVED 2026-08-27, commit f1b4ee6)
 - [ ] CHUNK-012 — Read-only review contract + diff-range context for reviewers
 - [ ] CHUNK-013 — Stuck-story accounting (`attempts` / `blocked` / parked, exit 3)
 - [ ] CHUNK-014 — Dirty-tree / killed-iteration recovery
@@ -872,7 +872,7 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **State left behind:** `main`, clean tree after commit; assignment injection ready for CHUNK-012 review-type CONTEXT additions.
 - **First step for next chunk (CHUNK-011):** Read CHUNK-011 spec; harden canonical git section in `prompt.md` (no `git add .`, expanded forbiddens) and align CONTEXT git one-liner.
 
-### CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens) (RESOLVED 2026-08-27 | commit pending)
+### CHUNK-011 — Git safety hardening in prompt (no `git add .`, expanded forbiddens) (RESOLVED 2026-08-27 | commit f1b4ee6)
 - **Did:** `prompt.md`: added Staging subsection (explicit paths only, NEVER `git add .`/`-A`); expanded forbidden list (push, reset --hard, bulk discards, clean, rebase, branch -D, amend except Final Story Hygiene); added foreign-changes rule. `go.sh`: CONTEXT git one-liner now mentions no bulk staging. Plus `HANDOVER.md` queue flip + this note.
 - **Deviations from spec:** none.
 - **Gotchas:** (1) CONTEXT one-liner avoids literal `git add .` so grep audit passes — staging rule lives in prompt.md. (2) Final Story Commit Hygiene `--amend` exception remains until CHUNK-015. (3) `git checkout -- <single-file>` for PRD restore (Files to Read First) is still allowed — forbidden list targets bulk tree discards only.
