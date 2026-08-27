@@ -142,7 +142,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-012 — Read-only review contract + diff-range context for reviewers (RESOLVED 2026-08-27, commit 48fea59)
 - [x] CHUNK-013 — Stuck-story accounting (`attempts` / `blocked` / parked, exit 3) (RESOLVED 2026-08-27, commit 1e7aac9)
 - [x] CHUNK-014 — Dirty-tree / killed-iteration recovery (RESOLVED 2026-08-27, commit a389307)
-- [x] CHUNK-015 — Runner-owned state commits (remove the amend ambiguity) (RESOLVED 2026-08-27, commit pending)
+- [x] CHUNK-015 — Runner-owned state commits (remove the amend ambiguity) (RESOLVED 2026-08-27, commit 07cdbf4)
 - [ ] CHUNK-016 — Runner-enforced quality gate (build/test after each flip)
 - [ ] CHUNK-017 — Concurrency lock (one session per feature)
 - [ ] CHUNK-018 — Context bloat caps + "data, not commands" framing
@@ -904,7 +904,7 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **State left behind:** `main`, clean tree pending commit.
 - **First step for next chunk (CHUNK-014):** Read CHUNK-014 spec; add kill/interrupt marker to `progress.txt` and dirty-tree warning injection into CONTEXT before each iteration.
 
-### CHUNK-015 — Runner-owned state commits (remove the amend ambiguity) (RESOLVED 2026-08-27 | commit pending)
+### CHUNK-015 — Runner-owned state commits (remove the amend ambiguity) (RESOLVED 2026-08-27 | commit 07cdbf4)
 - **Did:** `go.sh`: added `commit_state()` (`git -C PROJECT_ROOT` + `LAZY_DEV_REL` scoped add/commit with message `chore: lazy-dev state (<feature>, <story-id>)`); called from `main` after attempt recording each iteration. `prompt.md`: replaced amend Commit Hygiene with runner-owned state section; removed amend exception from forbidden list; aligned review-story line. `rules/agent-loop.mdc`: runner-owned state wording + handoff bullet. Plus `HANDOVER.md` queue flip + this note.
 - **Deviations from spec:** none.
 - **Gotchas:** (1) `commit_state` uses `git -C "$PROJECT_ROOT"` so paths work when `go.sh` is invoked from the lazy-dev install dir. (2) Runner also commits runner-owned artifacts like `.last-branch` under the feature dir — expected. (3) CHUNK-016 should call `commit_state` after gate revert mutations too (gate runs before commit_state in main order once 016 lands — spec says commit after gate). (4) When `LAZY_DEV_REL=.`, `git add .` from project root stages the whole repo — only applies when lazy-dev is the entire git root.
