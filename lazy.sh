@@ -1,6 +1,6 @@
 #!/bin/bash
 # Lazy Dev - Cursor CLI Agent Loop
-# Usage: ./go.sh <feature-name>
+# Usage: ./lazy.sh <feature-name>
 #
 # Each feature gets its own subfolder with isolated state.
 # Runs continuously until ALL user stories in PRD have passes: true.
@@ -22,7 +22,7 @@ set -e
 
 # Print CLI usage (--help and missing-args). Caller must resolve MAX_ITERATIONS first.
 print_usage() {
-    echo "Usage: ./go.sh [OPTIONS] <feature-name>"
+    echo "Usage: ./lazy.sh [OPTIONS] <feature-name>"
     echo ""
     echo "Options:"
     echo "  --verbose, -v          Enable verbose/debug output"
@@ -35,10 +35,10 @@ print_usage() {
     echo "Maximum iterations: $MAX_ITERATIONS (override with --max-iterations or LAZY_DEV_MAX_ITERATIONS)"
     echo ""
     echo "Examples:"
-    echo "  ./go.sh my-feature              # Run agent for feature"
-    echo "  ./go.sh features/user-auth      # Also accepts features/ prefix"
-    echo "  ./go.sh -v my-feature           # With verbose output"
-    echo "  ./go.sh --max-iterations 30 my-feature  # Custom max iterations"
+    echo "  ./lazy.sh my-feature              # Run agent for feature"
+    echo "  ./lazy.sh features/user-auth      # Also accepts features/ prefix"
+    echo "  ./lazy.sh -v my-feature           # With verbose output"
+    echo "  ./lazy.sh --max-iterations 30 my-feature  # Custom max iterations"
     echo ""
     echo "Environment variables:"
     echo "  LAZY_DEV_TIMEOUT=<s>         Per-iteration timeout in seconds (default: 1800)"
@@ -64,7 +64,7 @@ print_usage() {
 # ─────────────────────────────────────────────────────────────────────────────
 # CLI ENTRY POINT — direct execution only, NOT when sourced
 #
-# Sourcing this file (e.g. `source ./go.sh __test__`) only defines the
+# Sourcing this file (e.g. `source ./lazy.sh __test__`) only defines the
 # functions and globals above, for function-level tests. Flag parsing,
 # argument validation, and main() are skipped.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -211,7 +211,7 @@ FASTFAIL_SECS="${LAZY_DEV_FASTFAIL_SECS:-60}"
 # place of cursor/cursor-agent (same flags + prompt argument, same
 # tee | parse_agent_output pipeline). Lets you test loop behavior without
 # launching a real agent. Example:
-#   LAZY_DEV_FAKE_AGENT=/path/to/fake-agent.sh ./go.sh my-feature
+#   LAZY_DEV_FAKE_AGENT=/path/to/fake-agent.sh ./lazy.sh my-feature
 LAZY_DEV_FAKE_AGENT="${LAZY_DEV_FAKE_AGENT:-}"
 
 # Per-type model overrides (consumed by get_model_for_story; per-story .model
@@ -1896,7 +1896,7 @@ remove_push_blocker() {
 LAZY_DEV_FILES_STASHED=0
 
 # Stash changes in the entire lazy-dev directory before switching branches
-# This includes the go.sh script itself, feature folders, rules, etc.
+# This includes the lazy.sh script itself, feature folders, rules, etc.
 stash_lazy_dev_files() {
     local lazy_dev_dir="$1"
     local stash_message="lazy-dev-stash-$(date +%s)"
@@ -1921,7 +1921,7 @@ stash_lazy_dev_files() {
         log_info "Stashing changes in lazy-dev folder: $lazy_dev_dir"
         # Stash including untracked files (-u) for the entire lazy-dev directory
         if git stash push -u -m "$stash_message" -- "$lazy_dev_dir" 2>/dev/null; then
-            log_success "Lazy-dev folder changes stashed (including go.sh script)"
+            log_success "Lazy-dev folder changes stashed (including lazy.sh script)"
             LAZY_DEV_FILES_STASHED=1
             return 0
         else
@@ -2033,7 +2033,7 @@ setup_feature_branch() {
         return 0
     fi
     
-    # Stash lazy-dev folder files (including go.sh script) BEFORE checking for other uncommitted changes
+    # Stash lazy-dev folder files (including lazy.sh script) BEFORE checking for other uncommitted changes
     # Note: || true prevents set -e from exiting when nothing needs to be stashed (return 1)
     stash_lazy_dev_files "$SCRIPT_DIR" || true
     
@@ -2436,7 +2436,7 @@ run_iteration() {
     # Get current branch name
     CURRENT_GIT_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
     
-    # Session marker for scoped orphan cleanup (one marker per go.sh run)
+    # Session marker for scoped orphan cleanup (one marker per lazy.sh run)
     if [ -z "${LAZY_DEV_SESSION_MARKER:-}" ]; then
         LAZY_DEV_SESSION_MARKER="lazydev-$$-$(date +%s)"
     fi

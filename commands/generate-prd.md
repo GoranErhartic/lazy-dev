@@ -254,7 +254,7 @@ Each review agent outputs findings to an independent file in the feature directo
 
 **Path placeholders:** Review output paths below use `<feature>` as a placeholder. Substitute the actual feature name into these paths when generating the PRD.
 
-The loop runs until all stories have `passes: true`, bounded by `--max-iterations` (default 20); re-running `./go.sh <feature>` resumes where the PRD left off.
+The loop runs until all stories have `passes: true`, bounded by `--max-iterations` (default 20); re-running `./lazy.sh <feature>` resumes where the PRD left off.
 
 ---
 
@@ -575,7 +575,7 @@ After both reviews, **immediately apply all recommended changes** to the PRD:
    * Inform the user that the PRD is ready for the agent loop.
    * Provide the command to start implementation:
      ```
-     cd <lazy-dev-directory> && ./go.sh features/<feature-name>
+     cd <lazy-dev-directory> && ./lazy.sh features/<feature-name>
      ```
    * Explain that the agent will:
      - Pick up the highest priority incomplete story

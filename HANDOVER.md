@@ -153,7 +153,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-023 — CLI surface polish (help text, naming, `printf`) (RESOLVED 2026-08-28, commit 70fbf1f)
 - [x] CHUNK-024 — `generate-prd` fixes (command discoverability + content errors) (RESOLVED 2026-08-28, commit 9659fed)
 - [x] CHUNK-025 — Template + README synchronization (RESOLVED 2026-08-28)
-- [x] CHUNK-026 — End-to-end verification + final report (RESOLVED 2026-08-28, commit PENDING)
+- [x] CHUNK-026 — End-to-end verification + final report (RESOLVED 2026-08-28, commit a984ec3)
 
 Phase guide: **001–006** core loop correctness · **007–012** deterministic context & prompt · **013–020** robustness & quality · **021–026** consistency, docs, E2E.
 
@@ -992,7 +992,7 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **State left behind:** `main`, `.scratch/` untracked; clean tree after commit.
 - **First step for next chunk (CHUNK-026):** Read CHUNK-026 spec; run `bash -n go.sh`, build `/tmp/lazydev-e2e` scratch project with capable fake agent, run full positive + negative E2E suite.
 
-### CHUNK-026 — End-to-end verification + final report (RESOLVED 2026-08-28 | commit PENDING)
+### CHUNK-026 — End-to-end verification + final report (RESOLVED 2026-08-28 | commit a984ec3)
 - **Did:** Verification-only. Ran `bash -n go.sh` (OK); `shellcheck` not installed (noted, no chase). Built `/tmp/lazydev-e2e` scratch (git + npm build/test pass + lazy-dev copy) with 5-story PRD (`US-001`, `US-002`, `US-REVIEW`, `US-REVIEW-2`, `US-IMPLEMENT-RECS`) and capable fake agent (`/tmp/lazydev-e2e-fake/capable.sh`: flips assigned story, appends progress, commits one `src/` file, exits 0). Ran positive E2E + 6 negative cases. Updated queue + this note only — no product code changes.
 - **Deviations from spec:** none. Model sequence is opus→opus→gpt→gemini→opus (two impl stories both map to opus); spec shorthand “opus → gpt → gemini → opus” matches the type transitions.
 - **Gotchas:** (1) Copy lazy-dev with `rsync --exclude=.git` or `PROJECT_ROOT` resolves to the nested lazy-dev repo. (2) Stall test with `LAZY_DEV_FASTFAIL_SECS=0` retries the stalled iteration (backoff 5/15/45) — expect ~3× stall kills under `--max-iterations 1`. (3) Decoy must use `exec -a` + reparent so argv is visible and it is not a child of the go.sh shell (otherwise `pgrep -P $$` sweeps it).

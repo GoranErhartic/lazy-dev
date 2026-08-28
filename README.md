@@ -2,7 +2,7 @@
 
 An autonomous agent loop framework for Cursor. Runs multiple agent iterations to complete user stories from a PRD, with automatic task breakdown, quality gates, and knowledge persistence.
 
-> **🚧 Maintenance in progress:** a 26-chunk hardening plan for the loop lives in [HANDOVER.md](HANDOVER.md) — read it before making changes to `go.sh`.
+> **🚧 Maintenance in progress:** a 26-chunk hardening plan for the loop lives in [HANDOVER.md](HANDOVER.md) — read it before making changes to `lazy.sh`.
 
 ## How It Works
 
@@ -43,7 +43,7 @@ The loop automatically stops when all stories in the PRD have `passes: true`.
 
 ```
 lazy-dev/
-├── go.sh                      # Main loop script
+├── lazy.sh                      # Main loop script
 ├── prompt.md                  # Agent instructions
 ├── README.md                  # This file
 ├── commands/                  # Cursor commands
@@ -71,7 +71,7 @@ lazy-dev/
 - [Cursor](https://cursor.sh) with CLI enabled
 - `jq` for JSON parsing (install via `brew install jq` on macOS)
 - Git repository initialized
-- On first `./go.sh` run, lazy-dev auto-creates `.cursor/commands/lazy-dev` as a symlink to `commands/` so `/lazy-dev/generate-prd` is discoverable in Cursor
+- On first `./lazy.sh` run, lazy-dev auto-creates `.cursor/commands/lazy-dev` as a symlink to `commands/` so `/lazy-dev/generate-prd` is discoverable in Cursor
 
 ## Agent Capabilities
 
@@ -149,11 +149,11 @@ Edit `features/my-feature/prd.json` with your user stories:
 ### 4. Run the Loop
 
 ```bash
-chmod +x go.sh
-./go.sh my-feature                      # Run with default 20 iterations
-./go.sh --max-iterations 30 my-feature  # Custom max iterations
-./go.sh --rebase my-feature             # Resume and rebase onto latest main
-./go.sh -v my-feature                   # Verbose output
+chmod +x lazy.sh
+./lazy.sh my-feature                      # Run with default 20 iterations
+./lazy.sh --max-iterations 30 my-feature  # Custom max iterations
+./lazy.sh --rebase my-feature             # Resume and rebase onto latest main
+./lazy.sh -v my-feature                   # Verbose output
 ```
 
 ### CLI options
@@ -165,7 +165,7 @@ chmod +x go.sh
 | `--rebase` | Rebase an existing feature branch onto latest `main` (default: skip when branch has commits) |
 | `--help`, `-h` | Show usage |
 
-Run `./go.sh --help` for the full list.
+Run `./lazy.sh --help` for the full list.
 
 ## Working with Multiple Features
 
@@ -182,8 +182,8 @@ for f in user-auth payment-flow notifications; do
 done
 
 # Run specific feature
-./go.sh user-auth
-./go.sh payment-flow
+./lazy.sh user-auth
+./lazy.sh payment-flow
 ```
 
 ## Rules System
@@ -269,11 +269,11 @@ The loop runner monitors the PRD state automatically and stops when all stories 
 
 ## Resuming a feature
 
-Re-running `./go.sh <feature>` for an existing feature checks out the feature branch again but **does not rebase** onto `main` when the branch already has commits beyond `main` — your branch tip stays put so resume is predictable.
+Re-running `./lazy.sh <feature>` for an existing feature checks out the feature branch again but **does not rebase** onto `main` when the branch already has commits beyond `main` — your branch tip stays put so resume is predictable.
 
 To pull in latest `main` anyway, pass **`--rebase`**. If the rebase hits conflicts, the runner aborts the rebase and exits with an error (it does not continue on a stale base).
 
-Before switching branches, `go.sh` may stash uncommitted changes under the lazy-dev install directory. If `git stash pop` fails or critical files (`prd.json`, `prompt.md`, `examples/`) are missing after branch setup, the runner exits with guidance to run `git stash list` / `git stash pop` and resolve conflicts, then re-run.
+Before switching branches, `lazy.sh` may stash uncommitted changes under the lazy-dev install directory. If `git stash pop` fails or critical files (`prd.json`, `prompt.md`, `examples/`) are missing after branch setup, the runner exits with guidance to run `git stash list` / `git stash pop` and resolve conflicts, then re-run.
 
 ## Quality gate
 
@@ -312,7 +312,7 @@ All `LAZY_DEV_*` settings override CLI defaults or tune runner behavior:
 
 ## Handover
 
-The lazy-dev repo itself is maintained via a chunked implementation plan in [HANDOVER.md](HANDOVER.md). If you are modifying `go.sh`, the loop protocol, or runner behavior, read that file first — it is the authoritative work plan and handoff log for framework changes.
+The lazy-dev repo itself is maintained via a chunked implementation plan in [HANDOVER.md](HANDOVER.md). If you are modifying `lazy.sh`, the loop protocol, or runner behavior, read that file first — it is the authoritative work plan and handoff log for framework changes.
 
 ## Archiving
 
