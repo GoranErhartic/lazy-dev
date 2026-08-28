@@ -150,7 +150,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-020 — Cost / time budget breaker (exit 2) (RESOLVED 2026-08-27, 3a2aab8)
 - [x] CHUNK-021 — Branch-name source of truth (PRD `branchName` wins) (RESOLVED 2026-08-27)
 - [x] CHUNK-022 — Safe resume semantics (rebase opt-in, stash-pop re-verify) (RESOLVED 2026-08-27)
-- [x] CHUNK-023 — CLI surface polish (help text, naming, `printf`) (RESOLVED 2026-08-28, 165710b)
+- [x] CHUNK-023 — CLI surface polish (help text, naming, `printf`) (RESOLVED 2026-08-28, commit 70fbf1f)
 - [ ] CHUNK-024 — `generate-prd` fixes (command discoverability + content errors)
 - [ ] CHUNK-025 — Template + README synchronization
 - [ ] CHUNK-026 — End-to-end verification + final report
@@ -968,7 +968,7 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **State left behind:** `main`, `.scratch/` untracked; scratch dirs `/tmp/lazydev-chunk022*` for cleanup.
 - **First step for next chunk (CHUNK-023):** Read CHUNK-023 spec; extract `print_usage()`, fix `MAX_ITERATIONS` in help after flag parse, rename `USE_CURSOR_AGENT_SUBCOMMAND`.
 
-### CHUNK-023 — CLI surface polish (help text, naming, `printf`) (RESOLVED 2026-08-28 | 165710b)
+### CHUNK-023 — CLI surface polish (help text, naming, `printf`) (RESOLVED 2026-08-28 | commit 70fbf1f)
 - **Did:** `go.sh` only: extracted `print_usage()` (single source for `--help`, unknown-option, and missing-args paths); deferred help printing until after flag parsing so `--max-iterations` is reflected; renamed `USE_CURSOR_AGENT_SUBCOMMAND` → `USE_STANDALONE_CURSOR_AGENT` with sane polarity (1 = standalone `cursor-agent` found); `print_line` uses `printf '%b\n'` instead of `echo -e`; `initialize_progress_file` uses explicit `darwin*` branch for `sed -i`. Plus `HANDOVER.md` queue flip + this note.
 - **Deviations from spec:** none.
 - **Gotchas:** (1) `--help` can appear after other flags (e.g. `./go.sh --max-iterations 33 --help`) — all flags are parsed before `print_usage` runs. (2) `printf '%b'` still interprets standard C escapes (`\b`, `\n`, color codes) — the win over `echo -e` is consistency and safer handling of ambiguous sequences in paths; Windows-path backslashes like `\U` are preserved where `echo -e` may not be. (3) CHUNK-024 will touch `verify_setup` for command discoverability — do not duplicate help text again.
