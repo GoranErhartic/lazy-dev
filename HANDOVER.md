@@ -151,7 +151,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-021 — Branch-name source of truth (PRD `branchName` wins) (RESOLVED 2026-08-27)
 - [x] CHUNK-022 — Safe resume semantics (rebase opt-in, stash-pop re-verify) (RESOLVED 2026-08-27)
 - [x] CHUNK-023 — CLI surface polish (help text, naming, `printf`) (RESOLVED 2026-08-28, commit 70fbf1f)
-- [x] CHUNK-024 — `generate-prd` fixes (command discoverability + content errors) (RESOLVED 2026-08-28, commit acd5018)
+- [x] CHUNK-024 — `generate-prd` fixes (command discoverability + content errors) (RESOLVED 2026-08-28, commit 9659fed)
 - [ ] CHUNK-025 — Template + README synchronization
 - [ ] CHUNK-026 — End-to-end verification + final report
 
@@ -976,7 +976,7 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **State left behind:** `main`, `.scratch/` untracked; scratch dir `/tmp/lazydev-chunk023` for cleanup.
 - **First step for next chunk (CHUNK-024):** Read CHUNK-024 spec; add `verify_setup` symlink for `.cursor/commands/lazy-dev` → `../lazy-dev/commands`, then fix content in `commands/generate-prd.md`.
 
-### CHUNK-024 — `generate-prd` fixes (command discoverability + content) (RESOLVED 2026-08-28, commit acd5018)
+### CHUNK-024 — `generate-prd` fixes (command discoverability + content) (RESOLVED 2026-08-28, commit 9659fed)
 - **Did:** `go.sh`: added `ensure_cursor_commands_symlink()` (creates `$PROJECT_ROOT/.cursor/commands/lazy-dev` → relative path to `SCRIPT_DIR/commands`, logs creation; verifies existing symlink resolves to `generate-prd.md`); called from `verify_setup`. `commands/generate-prd.md`: replaced false iteration formula with loop-until-complete + `--max-iterations` semantics; added Jira suffix model-mapping note (`MED-523-REVIEW` / `*-REVIEW-2`); added explicit `<feature>` path substitution instruction. `README.md`: one Prerequisites line on auto-created symlink. Plus `HANDOVER.md` queue flip + this note.
 - **Deviations from spec:** none. Symlink target uses `python3 os.path.relpath` with `pwd -P`-normalized paths (falls back to `../lazy-dev/commands`) so macOS `/private/tmp` vs `/tmp` does not produce broken long relpaths.
 - **Gotchas:** (1) Symlink is always under project git root's `.cursor/commands/` — if lazy-dev is copied with its own `.git`, `PROJECT_ROOT` becomes the lazy-dev folder and the symlink lands in the wrong place; real installs should not nest lazy-dev as a separate git repo. (2) Existing non-symlink path at `.cursor/commands/lazy-dev` is warned and left untouched. (3) `--help` does not call `verify_setup`; symlink is created on first real feature run.
