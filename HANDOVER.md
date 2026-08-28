@@ -153,7 +153,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-023 — CLI surface polish (help text, naming, `printf`) (RESOLVED 2026-08-28, commit 70fbf1f)
 - [x] CHUNK-024 — `generate-prd` fixes (command discoverability + content errors) (RESOLVED 2026-08-28, commit 9659fed)
 - [x] CHUNK-025 — Template + README synchronization (RESOLVED 2026-08-28)
-- [ ] CHUNK-026 — End-to-end verification + final report
+- [x] CHUNK-026 — End-to-end verification + final report (RESOLVED 2026-08-28, commit PENDING)
 
 Phase guide: **001–006** core loop correctness · **007–012** deterministic context & prompt · **013–020** robustness & quality · **021–026** consistency, docs, E2E.
 
@@ -991,3 +991,20 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `jq . examples/prd.json` → OK. Cross-check: all 15 `LAZY_DEV_*` names in README env table exist in `go.sh`; spec-listed vars all present in both. Directory tree grep: no phantom `rules/patterns/` subtree (only correct `.cursor/rules/patterns/` prose). Documented flags (`--verbose`, `--max-iterations`, `--rebase`, `--help`) match `./go.sh --help`.
 - **State left behind:** `main`, `.scratch/` untracked; clean tree after commit.
 - **First step for next chunk (CHUNK-026):** Read CHUNK-026 spec; run `bash -n go.sh`, build `/tmp/lazydev-e2e` scratch project with capable fake agent, run full positive + negative E2E suite.
+
+### CHUNK-026 — End-to-end verification + final report (RESOLVED 2026-08-28 | commit PENDING)
+- **Did:** Verification-only. Ran `bash -n go.sh` (OK); `shellcheck` not installed (noted, no chase). Built `/tmp/lazydev-e2e` scratch (git + npm build/test pass + lazy-dev copy) with 5-story PRD (`US-001`, `US-002`, `US-REVIEW`, `US-REVIEW-2`, `US-IMPLEMENT-RECS`) and capable fake agent (`/tmp/lazydev-e2e-fake/capable.sh`: flips assigned story, appends progress, commits one `src/` file, exits 0). Ran positive E2E + 6 negative cases. Updated queue + this note only — no product code changes.
+- **Deviations from spec:** none. Model sequence is opus→opus→gpt→gemini→opus (two impl stories both map to opus); spec shorthand “opus → gpt → gemini → opus” matches the type transitions.
+- **Gotchas:** (1) Copy lazy-dev with `rsync --exclude=.git` or `PROJECT_ROOT` resolves to the nested lazy-dev repo. (2) Stall test with `LAZY_DEV_FASTFAIL_SECS=0` retries the stalled iteration (backoff 5/15/45) — expect ~3× stall kills under `--max-iterations 1`. (3) Decoy must use `exec -a` + reparent so argv is visible and it is not a child of the go.sh shell (otherwise `pgrep -P $$` sweeps it).
+- **Verification evidence:**
+  - **Syntax:** `bash -n go.sh` → OK. `shellcheck` → not installed.
+  - **Positive (`/tmp/lazydev-e2e`, `LAZY_DEV_FAKE_AGENT=capable.sh`, `./go.sh e2e-feature`):** exit **0**. One story/iteration (5): `1/5`…`5/5`. Models: `US-001→opus-4.6`, `US-002→opus-4.6`, `US-REVIEW→gpt-5.3-codex`, `US-REVIEW-2→gemini-3-pro`, `US-IMPLEMENT-RECS→opus-4.6`. Five `chore: lazy-dev state (e2e-feature, …)` commits. Quality gate ran build+test on each flip → `[SUCCESS] Quality gate passed (npm)`. Completion banner `All stories completed`. Mid-run watcher: `.git/lazy-dev-session.lock` + pre-push + feature `.lazy-dev.lock` PRESENT; after exit all GONE; log `Removed push blocker hook`. `pgrep capable.sh` → none. Feature dir left with only `prd.json`/`progress.txt` (no spinner PID leftovers). Final PRD: all five `passes=true`, `attempts=0`.
+  - **N1 stuck (013):** noop agent, 2-story PRD → US-A then US-B each parked after 3 attempts; exit **3**; `STUCK: Feature cannot progress`; both `blocked:true`. **PASS**
+  - **N2 corrupt (003):** truncated JSON PRD → `PRD validation failed: … does not contain valid JSON`; exit **1**; no agent launch. **PASS**
+  - **N3 stall (019):** `LAZY_DEV_STALL_TIMEOUT=10` + hang-after-init agent → `Stall detected (no output for 10s)`; killed-marker `(stall, iteration 1)`; exit 124 per attempt. **PASS**
+  - **N4 lock (017):** slow run1 + concurrent run2 → run2 exit **1**, `Another lazy-dev session is running for feature 'neg'`; lock gone after run1. **PASS**
+  - **N5 gate (016):** flip agent + `npm test` exit 1 → `QUALITY GATE FAILED`; `passes:false`, `attempts:1`; `## 🚫 Runner quality gate FAILED` in progress.txt. **PASS**
+  - **N6 decoy (004):** `exec -a "cursor-agent $ROOT worker" sleep 120` survived full capable-agent run (PID still alive after exit 0). **PASS**
+  - **Summary:** positive + N1–N6 all **PASS**. Queue: all 26 chunks `- [x]`.
+- **State left behind:** `main`; only `HANDOVER.md` changed for this chunk (`.scratch/` still untracked). Scratch artifacts under `/tmp/lazydev-e2e*`, `/tmp/lazydev-e2e-fake/`, `/tmp/lazydev-e2e-neg-*` (safe to delete). Plan complete — no next chunk.
+- **First step for next chunk:** n/a — all 26 chunks resolved; CHUNK-026 E2E evidence is in this note.
