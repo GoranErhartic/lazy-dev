@@ -26,7 +26,7 @@ Core rules active for every agent invocation:
 
 ### Project Patterns
 
-Project-specific patterns live in `.cursor/rules/patterns/` and are maintained separately from lazy-dev. The agent reads these during implementation (see `prompt.md` for the full list).
+Project-specific patterns (architecture, testing, security, etc.) live in **your project's** `.cursor/rules/patterns/` — not inside lazy-dev's `rules/` tree. Maintain them separately from lazy-dev; agents consult them during implementation (see `prompt.md` and the main [README](../README.md#rules-system) for the full loading order).
 
 ### Discovered Patterns
 
@@ -48,7 +48,7 @@ All discovered patterns are stored centrally in `discovered/` for cross-feature 
 
 At iteration start, agents should:
 1. Read `rules/discovered/*.mdc` for cross-feature patterns
-2. Consult `.cursor/rules/patterns/*.mdc` for project-specific patterns (see `prompt.md` for details)
+2. Consult your project's `.cursor/rules/patterns/*.mdc` for project-specific patterns (see `prompt.md` for details)
 
 ## Examples
 

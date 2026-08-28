@@ -152,7 +152,7 @@ Work top to bottom. First `- [ ]` line = your chunk.
 - [x] CHUNK-022 — Safe resume semantics (rebase opt-in, stash-pop re-verify) (RESOLVED 2026-08-27)
 - [x] CHUNK-023 — CLI surface polish (help text, naming, `printf`) (RESOLVED 2026-08-28, commit 70fbf1f)
 - [x] CHUNK-024 — `generate-prd` fixes (command discoverability + content errors) (RESOLVED 2026-08-28, commit 9659fed)
-- [ ] CHUNK-025 — Template + README synchronization
+- [x] CHUNK-025 — Template + README synchronization (RESOLVED 2026-08-28)
 - [ ] CHUNK-026 — End-to-end verification + final report
 
 Phase guide: **001–006** core loop correctness · **007–012** deterministic context & prompt · **013–020** robustness & quality · **021–026** consistency, docs, E2E.
@@ -983,3 +983,11 @@ Append-only. Newest notes last. Write per the template in section 0.
 - **Verification evidence:** `bash -n go.sh` → OK. Grep `commands/generate-prd.md`: no `~/.cursor/rules`, no `(user story count) + 3`, no `{feature}`. Scratch `/tmp/lazydev-chunk024b` (no embedded `.git` in lazy-dev): source harness `ensure_cursor_commands_symlink` → `Created ... lazy-dev → ../lazy-dev/commands`; `readlink` → `../lazy-dev/commands`; `generate-prd.md` resolves. Second `ensure_cursor_commands_symlink` call → no error, file still resolves.
 - **State left behind:** `main`, `.scratch/` untracked; scratch dirs `/tmp/lazydev-chunk024*` for cleanup.
 - **First step for next chunk (CHUNK-025):** Sync `examples/prd.json`, `README.md`, and `rules/README.md` per CHUNK-025 spec (grep `LAZY_DEV_*` in `go.sh` for env table).
+
+### CHUNK-025 — Template + README synchronization (RESOLVED 2026-08-28)
+- **Did:** `examples/prd.json`: removed fake `jiraTaskId`, set `branchName` to `feature/my-feature` (`attempts: 0` already on all stories). `README.md`: fixed default/max-iterations examples (20, `--max-iterations` flag); removed phantom `rules/patterns/` from directory tree; aligned Standard Story Flow with template (997/998/999 + `US-REVIEW-2`); added CLI options table, Environment variables table (15 `LAZY_DEV_*` vars), Quality gate section, Handover pointer; expanded PRD optional fields; clarified project patterns live in `.cursor/rules/patterns/`. `rules/README.md`: aligned Project Patterns wording with main README. Plus `HANDOVER.md` queue flip + this note.
+- **Deviations from spec:** none.
+- **Gotchas:** (1) `go.sh --help` documents fewer env vars than the README table — README is the complete reference per spec (includes `STALL_TIMEOUT`, context caps, `PRINT_CONTEXT`). (2) `--help` still omits those vars; CHUNK-026 E2E is verification-only — do not "fix" `go.sh` here. (3) Optional `jiraTaskId` is documented in README only (JSON has no comments).
+- **Verification evidence:** `jq . examples/prd.json` → OK. Cross-check: all 15 `LAZY_DEV_*` names in README env table exist in `go.sh`; spec-listed vars all present in both. Directory tree grep: no phantom `rules/patterns/` subtree (only correct `.cursor/rules/patterns/` prose). Documented flags (`--verbose`, `--max-iterations`, `--rebase`, `--help`) match `./go.sh --help`.
+- **State left behind:** `main`, `.scratch/` untracked; clean tree after commit.
+- **First step for next chunk (CHUNK-026):** Read CHUNK-026 spec; run `bash -n go.sh`, build `/tmp/lazydev-e2e` scratch project with capable fake agent, run full positive + negative E2E suite.

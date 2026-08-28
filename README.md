@@ -58,11 +58,7 @@ lazy-dev/
 │   ├── pattern-discovery.mdc
 │   ├── discovered/            # ALL discovered patterns (cross-feature learning)
 │   │   └── {feature}-{area}.mdc
-│   └── patterns/
-│       ├── architecture.mdc
-│       ├── error-handling.mdc
-│       ├── testing.mdc
-│       └── security.mdc
+│   └── README.md
 └── features/                  # Each feature gets isolated state
     └── my-feature/
         ├── prd.json           # This feature's stories
@@ -154,9 +150,22 @@ Edit `features/my-feature/prd.json` with your user stories:
 
 ```bash
 chmod +x go.sh
-./go.sh my-feature        # Run with default 10 iterations
-./go.sh my-feature 20     # Run with 20 iterations
+./go.sh my-feature                      # Run with default 20 iterations
+./go.sh --max-iterations 30 my-feature  # Custom max iterations
+./go.sh --rebase my-feature             # Resume and rebase onto latest main
+./go.sh -v my-feature                   # Verbose output
 ```
+
+### CLI options
+
+| Flag | Description |
+|------|-------------|
+| `--verbose`, `-v` | Enable verbose/debug output |
+| `--max-iterations N` | Stop after N iterations (default: 20) |
+| `--rebase` | Rebase an existing feature branch onto latest `main` (default: skip when branch has commits) |
+| `--help`, `-h` | Show usage |
+
+Run `./go.sh --help` for the full list.
 
 ## Working with Multiple Features
 
@@ -186,7 +195,8 @@ Apply to ALL features:
 - `task-breakdown.mdc` - Story decomposition
 - `quality-gates.mdc` - Verification checklists
 - `pattern-discovery.mdc` - How to capture and store patterns
-- `patterns/` - Architecture, testing, security
+
+Project-specific patterns (architecture, testing, security, etc.) live in **your project's** `.cursor/rules/patterns/` — not inside lazy-dev. See `rules/README.md` and `prompt.md` for how agents load them.
 
 ### Discovered Patterns (`rules/discovered/`)
 
@@ -220,11 +230,26 @@ Each pattern file includes a `discoveredFrom` field in frontmatter for traceabil
       "acceptanceCriteria": ["Criterion 1", "Criterion 2"],
       "priority": 1,
       "passes": false,
+      "attempts": 0,
       "notes": ""
     }
   ]
 }
 ```
+
+Optional top-level fields:
+
+| Field | Purpose |
+|-------|---------|
+| `jiraTaskId` | Jira ticket id (e.g. `"MED-123"`) — used for branch naming and model mapping when story ids use Jira suffixes (`MED-123-REVIEW`) |
+
+Optional per-story fields:
+
+| Field | Purpose |
+|-------|---------|
+| `attempts` | Failed iteration count (runner-managed; start at `0`) |
+| `model` | Override the default model for this story |
+| `blocked` | Set by the runner when a story is parked after repeated failures |
 
 ## Standard Story Flow
 
@@ -232,8 +257,11 @@ Every PRD should include these final stories (in priority order):
 
 | Story | Priority | Purpose |
 |-------|----------|---------|
-| `US-REVIEW` | 998 | Code review of all implementation |
-| `US-IMPLEMENT-RECS` | 999 | Fix issues found in review |
+| `US-REVIEW` | 997 | First code review (GPT model) |
+| `US-REVIEW-2` | 998 | Second independent code review (Gemini model) |
+| `US-IMPLEMENT-RECS` | 999 | Fix issues found in both reviews |
+
+Copy `examples/prd.json` for the canonical template including these stories.
 
 ## Completion Detection
 
@@ -246,6 +274,45 @@ Re-running `./go.sh <feature>` for an existing feature checks out the feature br
 To pull in latest `main` anyway, pass **`--rebase`**. If the rebase hits conflicts, the runner aborts the rebase and exits with an error (it does not continue on a stale base).
 
 Before switching branches, `go.sh` may stash uncommitted changes under the lazy-dev install directory. If `git stash pop` fails or critical files (`prd.json`, `prompt.md`, `examples/`) are missing after branch setup, the runner exits with guidance to run `git stash list` / `git stash pop` and resolve conflicts, then re-run.
+
+## Quality gate
+
+After each iteration, if the assigned story was flipped to `passes: true`, the runner runs an automated **quality gate** before accepting the flip:
+
+- **Node** (`npm`, `pnpm`, or `yarn`): runs `build` and `test` scripts when present in `package.json` (missing scripts are skipped)
+- **Rust** (`cargo`): `cargo build` and `cargo test`
+- **Go**: `go build ./...` and `go test ./...`
+- **Java/Gradle** and unrecognized toolchains: gate skipped (no built-in commands)
+
+If the gate fails, the runner **reverts** the story flip, increments `attempts`, and appends a `🚫` note to `progress.txt` with the failure excerpt. The next iteration must fix the gate before the story can complete.
+
+Override per-step timeout with `LAZY_DEV_GATE_TIMEOUT` (default 600 seconds).
+
+## Environment variables
+
+All `LAZY_DEV_*` settings override CLI defaults or tune runner behavior:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `LAZY_DEV_TIMEOUT` | `1800` | Per-iteration timeout (seconds) |
+| `LAZY_DEV_MAX_ITERATIONS` | `20` | Maximum iterations (overridden by `--max-iterations`) |
+| `LAZY_DEV_FASTFAIL_SECS` | `60` | Failed iterations shorter than this are not retried (`0` disables) |
+| `LAZY_DEV_STALL_TIMEOUT` | `600` | Kill an iteration that produces no output for this many seconds |
+| `LAZY_DEV_MODEL_IMPL` | `opus-4.6` | Model for implementation stories |
+| `LAZY_DEV_MODEL_REVIEW` | `gpt-5.3-codex` | Model for first review story (`*-REVIEW`, not `*-REVIEW-2`) |
+| `LAZY_DEV_MODEL_REVIEW2` | `gemini-3-pro` | Model for second review story (`*-REVIEW-2`) |
+| `LAZY_DEV_GATE_TIMEOUT` | `600` | Per-step build/test timeout in the quality gate (seconds) |
+| `LAZY_DEV_MAX_COST` | *(unset)* | Stop when cumulative session cost exceeds this (USD) |
+| `LAZY_DEV_MAX_MINUTES` | *(unset)* | Stop when cumulative session duration exceeds this (minutes) |
+| `LAZY_DEV_MAX_PATTERNS` | `10` | Max discovered-pattern files injected into agent context |
+| `LAZY_DEV_MAX_PATTERN_BYTES` | `8192` | Max bytes per injected pattern file |
+| `LAZY_DEV_MAX_PROGRESS_LINES` | `150` | Max lines of `progress.txt` tail injected into context |
+| `LAZY_DEV_PRINT_CONTEXT` | *(unset)* | Set to `1` to print the assembled agent prompt before launch (debug) |
+| `LAZY_DEV_FAKE_AGENT` | *(unset)* | Test hook: executable used instead of the Cursor CLI |
+
+## Handover
+
+The lazy-dev repo itself is maintained via a chunked implementation plan in [HANDOVER.md](HANDOVER.md). If you are modifying `go.sh`, the loop protocol, or runner behavior, read that file first — it is the authoritative work plan and handoff log for framework changes.
 
 ## Archiving
 
