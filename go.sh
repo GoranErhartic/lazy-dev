@@ -20,83 +20,8 @@
 
 set -e
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CLI ENTRY POINT — direct execution only, NOT when sourced
-#
-# Sourcing this file (e.g. `source ./go.sh __test__`) only defines the
-# functions and globals above, for function-level tests. Flag parsing,
-# argument validation, and main() are skipped.
-# ─────────────────────────────────────────────────────────────────────────────
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-
-# Parse flags
-VERBOSE=""
-FORCE_REBASE=0
-while [[ "$1" == -* ]]; do
-        case "$1" in
-        --verbose|-v)
-            VERBOSE="1"
-            shift
-            ;;
-        --max-iterations)
-            shift
-            MAX_ITERATIONS="$1"
-            shift
-            ;;
-        --rebase)
-            FORCE_REBASE=1
-            shift
-            ;;
-        --help|-h)
-            echo "Usage: ./go.sh [OPTIONS] <feature-name>"
-            echo ""
-            echo "Options:"
-            echo "  --verbose, -v          Enable verbose/debug output"
-            echo "  --max-iterations N     Set maximum iterations (default: 20)"
-            echo "  --rebase               Rebase an existing feature branch onto latest main (default: skip when branch has commits)"
-            echo "  --help, -h             Show this help message"
-            echo ""
-            echo "Runs continuously until ALL user stories in PRD have passes: true."
-            echo "Agent runs in headless mode with auto-approve enabled."
-            echo "Maximum iterations: $MAX_ITERATIONS (override with --max-iterations or LAZY_DEV_MAX_ITERATIONS)"
-            echo ""
-            echo "Examples:"
-            echo "  ./go.sh my-feature              # Run agent for feature"
-            echo "  ./go.sh features/user-auth      # Also accepts features/ prefix"
-            echo "  ./go.sh -v my-feature           # With verbose output"
-            echo "  ./go.sh --max-iterations 30 my-feature  # Custom max iterations"
-            echo ""
-            echo "Environment variables:"
-            echo "  LAZY_DEV_TIMEOUT=<s>         Per-iteration timeout in seconds (default: 1800)"
-            echo "  LAZY_DEV_MAX_ITERATIONS=<n>  Maximum iterations (default: 20)"
-            echo "  LAZY_DEV_FASTFAIL_SECS=<s>   Failed iterations shorter than this are not retried (default: 60; 0 disables)"
-            echo "  LAZY_DEV_FAKE_AGENT=<path>   Test hook: run this executable instead of the Cursor CLI"
-            echo "  LAZY_DEV_MODEL_IMPL=<id>     Implementation story model (default: opus-4.6)"
-            echo "  LAZY_DEV_MODEL_REVIEW=<id>   First review story model (default: gpt-5.3-codex)"
-            echo "  LAZY_DEV_MODEL_REVIEW2=<id>  Second review story model (default: gemini-3-pro)"
-            echo "  LAZY_DEV_GATE_TIMEOUT=<s>    Per-gate build/test timeout in seconds (default: 600)"
-            echo "  LAZY_DEV_MAX_COST=<usd>      Stop when cumulative session cost exceeds this (decimal USD)"
-            echo "  LAZY_DEV_MAX_MINUTES=<n>     Stop when cumulative session duration exceeds this (minutes)"
-            echo ""
-            echo "Troubleshooting:"
-            echo "  Stale feature lock after a crash: rm -rf features/<feature>/.lazy-dev.lock"
-            echo ""
-            echo "To create a new feature:"
-            echo "  mkdir -p features/<feature-name>"
-            echo "  cp examples/prd.json features/<feature-name>/"
-            echo "  cp examples/progress.txt features/<feature-name>/"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Use --help for usage information"
-            exit 1
-            ;;
-    esac
-done
-
-# Validate arguments
-if [ -z "$1" ]; then
+# Print CLI usage (--help and missing-args). Caller must resolve MAX_ITERATIONS first.
+print_usage() {
     echo "Usage: ./go.sh [OPTIONS] <feature-name>"
     echo ""
     echo "Options:"
@@ -107,7 +32,7 @@ if [ -z "$1" ]; then
     echo ""
     echo "Runs continuously until ALL user stories in PRD have passes: true."
     echo "Agent runs in headless mode with auto-approve enabled."
-    echo "Maximum iterations: 20 (override with --max-iterations or LAZY_DEV_MAX_ITERATIONS)"
+    echo "Maximum iterations: $MAX_ITERATIONS (override with --max-iterations or LAZY_DEV_MAX_ITERATIONS)"
     echo ""
     echo "Examples:"
     echo "  ./go.sh my-feature              # Run agent for feature"
@@ -134,6 +59,61 @@ if [ -z "$1" ]; then
     echo "  mkdir -p features/<feature-name>"
     echo "  cp examples/prd.json features/<feature-name>/"
     echo "  cp examples/progress.txt features/<feature-name>/"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CLI ENTRY POINT — direct execution only, NOT when sourced
+#
+# Sourcing this file (e.g. `source ./go.sh __test__`) only defines the
+# functions and globals above, for function-level tests. Flag parsing,
+# argument validation, and main() are skipped.
+# ─────────────────────────────────────────────────────────────────────────────
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+
+# Parse flags
+VERBOSE=""
+FORCE_REBASE=0
+SHOW_HELP=0
+while [[ "$1" == -* ]]; do
+        case "$1" in
+        --verbose|-v)
+            VERBOSE="1"
+            shift
+            ;;
+        --max-iterations)
+            shift
+            MAX_ITERATIONS="$1"
+            shift
+            ;;
+        --rebase)
+            FORCE_REBASE=1
+            shift
+            ;;
+        --help|-h)
+            SHOW_HELP=1
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            print_usage
+            exit 1
+            ;;
+    esac
+done
+
+# Resolve MAX_ITERATIONS before printing usage (flag > env > default)
+if [ -z "${MAX_ITERATIONS:-}" ]; then
+    MAX_ITERATIONS="${LAZY_DEV_MAX_ITERATIONS:-20}"
+fi
+
+if [ "$SHOW_HELP" = "1" ]; then
+    print_usage
+    exit 0
+fi
+
+# Validate arguments
+if [ -z "$1" ]; then
+    print_usage
     exit 1
 fi
 
@@ -169,8 +149,8 @@ SESSION_STATS_FILE="$FEATURE_DIR/.session-stats"
 # Shared discovered patterns directory (cross-feature learning)
 DISCOVERED_DIR="$SCRIPT_DIR/rules/discovered"
 
-# Will be set by verify_setup - determines which command to use
-USE_CURSOR_AGENT_SUBCOMMAND=0
+# Will be set by verify_setup: 1 when standalone cursor-agent binary is available
+USE_STANDALONE_CURSOR_AGENT=0
 
 # Global temp file for output capture (set in main, cleaned up by trap)
 OUTPUT_FILE=""
@@ -380,12 +360,11 @@ strip_ansi() {
 
 # Print a line with proper newline and carriage return to reset cursor position
 # This ensures each line starts at column 0
-# Uses echo -e to interpret color escape sequences
 print_line() {
     # First output \r\n to start on a fresh line at column 0
-    # Then use echo -e to interpret the color codes in the content
+    # printf %b interprets color escape sequences without mangling backslashes
     printf '\r\n'
-    echo -e "$1"
+    printf '%b\n' "$1"
 }
 
 # Parse and format NDJSON events from cursor-agent stream-json output
@@ -2195,12 +2174,12 @@ verify_setup() {
     fi
     
     # Check for cursor-agent specifically
-    if ! command -v cursor-agent &> /dev/null; then
-        log_debug "cursor-agent not found in PATH - will try 'cursor agent' instead"
-        USE_CURSOR_AGENT_SUBCOMMAND=1
-    else
+    if command -v cursor-agent &> /dev/null; then
         log_debug "Found cursor-agent CLI"
-        USE_CURSOR_AGENT_SUBCOMMAND=0
+        USE_STANDALONE_CURSOR_AGENT=1
+    else
+        log_debug "cursor-agent not found in PATH - will try 'cursor agent' instead"
+        USE_STANDALONE_CURSOR_AGENT=0
     fi
 }
 
@@ -2259,8 +2238,11 @@ Started: $(date)
 ---
 EOF
         # Replace the date placeholder
-        sed -i '' "s/\$(date)/$(date)/" "$PROGRESS_FILE" 2>/dev/null || \
-        sed -i "s/\$(date)/$(date)/" "$PROGRESS_FILE" 2>/dev/null || true
+        if [[ "$OSTYPE" == darwin* ]]; then
+            sed -i '' "s/\$(date)/$(date)/" "$PROGRESS_FILE"
+        else
+            sed -i "s/\$(date)/$(date)/" "$PROGRESS_FILE"
+        fi
     fi
 }
 
@@ -2504,11 +2486,11 @@ This iteration you will work EXACTLY one story: ${next_story_id} — ${next_stor
         # (same flags + prompt argument; still goes through tee | parse_agent_output)
         CURSOR_CMD="$LAZY_DEV_FAKE_AGENT"
         log_info "Using LAZY_DEV_FAKE_AGENT executable: $CURSOR_CMD"
-    elif [ "${USE_CURSOR_AGENT_SUBCOMMAND:-0}" = "1" ]; then
+    elif [ "${USE_STANDALONE_CURSOR_AGENT:-0}" = "1" ]; then
+        CURSOR_CMD="cursor-agent"
+    else
         CURSOR_CMD="cursor"
         CURSOR_ARGS+=("agent")
-    else
-        CURSOR_CMD="cursor-agent"
     fi
     
     # Always run in headless mode with auto-approve and streaming output
