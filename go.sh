@@ -2130,6 +2130,50 @@ setup_feature_branch() {
     echo ""
 }
 
+# Ensure Cursor discovers lazy-dev commands at .cursor/commands/lazy-dev/
+ensure_cursor_commands_symlink() {
+    local commands_src="$SCRIPT_DIR/commands"
+    local cursor_commands_dir="$PROJECT_ROOT/.cursor/commands"
+    local symlink_path="$cursor_commands_dir/lazy-dev"
+    local rel_target
+
+    if [ ! -d "$commands_src" ]; then
+        log_debug "No commands directory at $commands_src — skipping Cursor commands symlink"
+        return 0
+    fi
+
+    mkdir -p "$cursor_commands_dir"
+
+    if [ -L "$symlink_path" ]; then
+        if [ -f "$symlink_path/generate-prd.md" ]; then
+            log_debug "Cursor command symlink OK: $symlink_path"
+        else
+            log_warn "Cursor command symlink exists but does not resolve to commands: $symlink_path"
+        fi
+        return 0
+    fi
+
+    if [ -e "$symlink_path" ]; then
+        log_warn "$symlink_path exists but is not a symlink — skipping Cursor commands symlink"
+        return 0
+    fi
+
+    if command -v python3 &> /dev/null; then
+        local commands_src_abs cursor_commands_abs
+        commands_src_abs="$(cd "$commands_src" && pwd -P)"
+        cursor_commands_abs="$(cd "$cursor_commands_dir" && pwd -P)"
+        rel_target=$(python3 -c "import os.path; print(os.path.relpath('$commands_src_abs', '$cursor_commands_abs'))")
+    else
+        rel_target="../lazy-dev/commands"
+    fi
+
+    if ln -s "$rel_target" "$symlink_path"; then
+        log_info "Created Cursor command symlink: $symlink_path → $rel_target"
+    else
+        log_warn "Failed to create Cursor command symlink: $symlink_path"
+    fi
+}
+
 # Verify required files exist
 verify_setup() {
     if [ ! -d "$FEATURE_DIR" ]; then
@@ -2151,6 +2195,8 @@ verify_setup() {
         log_error "Prompt file not found: $PROMPT_FILE"
         exit 1
     fi
+
+    ensure_cursor_commands_symlink
 
     # Create discovered directory if it doesn't exist
     mkdir -p "$DISCOVERED_DIR"

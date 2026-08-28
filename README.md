@@ -75,6 +75,7 @@ lazy-dev/
 - [Cursor](https://cursor.sh) with CLI enabled
 - `jq` for JSON parsing (install via `brew install jq` on macOS)
 - Git repository initialized
+- On first `./go.sh` run, lazy-dev auto-creates `.cursor/commands/lazy-dev` as a symlink to `commands/` so `/lazy-dev/generate-prd` is discoverable in Cursor
 
 ## Agent Capabilities
 

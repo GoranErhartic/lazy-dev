@@ -198,6 +198,7 @@ While the output format is `prd.json`, mentally structure the feature as:
 **When Jira task is provided (e.g., MED-523):**
 - Use `{JIRA-ID}-001`, `{JIRA-ID}-002`, etc. (e.g., `MED-523-001`, `MED-523-002`)
 - This links stories directly to the Jira ticket for traceability
+- Review story IDs use the same prefix with suffixes: `MED-523-REVIEW`, `MED-523-REVIEW-2`, `MED-523-IMPL-RECS`. The lazy-dev loop selects review models by **suffix** (`*-REVIEW-2` before `*-REVIEW`), so Jira-prefixed review IDs correctly map to the first review model (GPT 5.3 Codex) and second review model (Gemini 3 Pro)
 
 **When no Jira task is provided:**
 - Use `US-001`, `US-002`, etc. for sequential numbering
@@ -251,7 +252,9 @@ Every PRD automatically includes three final user stories for quality assurance.
 
 Each review agent outputs findings to an independent file in the feature directory. The implementation agent reads both files to synthesize and implement the combined recommendations.
 
-The lazy-dev agent loop calculates iterations as: `(user story count) + 3` to account for these review steps.
+**Path placeholders:** Review output paths below use `<feature>` as a placeholder. Substitute the actual feature name into these paths when generating the PRD.
+
+The loop runs until all stories have `passes: true`, bounded by `--max-iterations` (default 20); re-running `./go.sh <feature>` resumes where the PRD left off.
 
 ---
 
