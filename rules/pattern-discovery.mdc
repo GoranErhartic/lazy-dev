@@ -1,6 +1,6 @@
 ---
 description: "Pattern discovery and rule creation protocol"
-alwaysApply: true
+alwaysApply: false
 ---
 
 # Pattern Discovery Protocol

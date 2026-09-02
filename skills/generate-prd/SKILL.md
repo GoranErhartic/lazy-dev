@@ -1,4 +1,10 @@
 ---
+name: generate-prd
+description: Generate a Product Requirements Document (PRD) for a new feature. Use when planning a feature, starting a new project, or when asked to create a PRD. Triggers on: create a prd, write prd for, plan this feature, requirements for, spec out.
+disable-model-invocation: true
+---
+
+---
 title: "Generate PRD"
 description: "Generate a Product Requirements Document (PRD) for a new feature. Use when planning a feature, starting a new project, or when asked to create a PRD. Triggers on: create a prd, write prd for, plan this feature, requirements for, spec out."
 author: "Goran Erhartic"
@@ -198,7 +204,7 @@ While the output format is `prd.json`, mentally structure the feature as:
 **When Jira task is provided (e.g., MED-523):**
 - Use `{JIRA-ID}-001`, `{JIRA-ID}-002`, etc. (e.g., `MED-523-001`, `MED-523-002`)
 - This links stories directly to the Jira ticket for traceability
-- Review story IDs use the same prefix with suffixes: `MED-523-REVIEW`, `MED-523-REVIEW-2`, `MED-523-IMPL-RECS`. The lazy-dev loop selects review models by **suffix** (`*-REVIEW-2` before `*-REVIEW`), so Jira-prefixed review IDs correctly map to the first review model (GPT 5.3 Codex) and second review model (Gemini 3 Pro)
+- Review story IDs use the same prefix with suffixes: `MED-523-REVIEW`, `MED-523-REVIEW-2`, `MED-523-IMPL-RECS`. The lazy-dev loop selects models by **suffix** (`*-REVIEW-2` before `*-REVIEW`) using `LAZY_DEV_MODEL_REVIEW` and `LAZY_DEV_MODEL_REVIEW2` in `lazy.sh`
 
 **When no Jira task is provided:**
 - Use `US-001`, `US-002`, etc. for sequential numbering
@@ -211,9 +217,9 @@ Stories should be independent enough to be worked on in separate agent iteration
 - Priority 1: Core functionality, must-have, no dependencies
 - Priority 2: Important features that depend on Priority 1
 - Priority 3: Nice-to-have, polish, or optional enhancements
-- Priority 997: Auto-generated first code review step (US-REVIEW, GPT 5.3 Codex)
-- Priority 998: Auto-generated second code review step (US-REVIEW-2, Gemini 3 Pro)
-- Priority 999: Auto-generated implement recommendations step (US-IMPLEMENT-RECS, Opus 4.6, always last)
+- Priority 997: Auto-generated first code review step (US-REVIEW)
+- Priority 998: Auto-generated second code review step (US-REVIEW-2)
+- Priority 999: Auto-generated implement recommendations step (US-IMPLEMENT-RECS, always last)
 
 ### ⚠️ CRITICAL: Unique Priorities Required
 
@@ -241,9 +247,9 @@ Stories should be independent enough to be worked on in separate agent iteration
 Every PRD automatically includes three final user stories for quality assurance. These ensure proper dual-model code review and implementation of fixes **at the end of every feature**:
 
 **With Jira (e.g., MED-523):**
-1. **MED-523-REVIEW** (Priority 997): First code review using GPT 5.3 Codex → outputs to `review-gpt.md`
-2. **MED-523-REVIEW-2** (Priority 998): Second code review using Gemini 3 Pro → outputs to `review-gemini.md`
-3. **MED-523-IMPL-RECS** (Priority 999): Implement recommendations from both reviews using Opus 4.6
+1. **MED-523-REVIEW** (Priority 997): First code review → outputs to `review-gpt.md`
+2. **MED-523-REVIEW-2** (Priority 998): Second code review → outputs to `review-gemini.md`
+3. **MED-523-IMPL-RECS** (Priority 999): Implement recommendations from both reviews
 
 **Without Jira:**
 1. **US-REVIEW** (Priority 997): First code review
@@ -335,8 +341,8 @@ The loop runs until all stories have `passes: true`, bounded by `--max-iteration
        },
        {
         "id": "[JIRA-123-REVIEW or US-REVIEW if no Jira]",
-        "title": "Code review - GPT 5.3 Codex",
-        "description": "As a principal engineer, I need to perform a thorough code review of all changes made during this feature implementation using GPT 5.3 Codex.",
+        "title": "Code review (first pass)",
+        "description": "As a principal engineer, I need to perform a thorough code review of all changes made during this feature implementation.",
         "acceptanceCriteria": [
           "Review all new/modified files for code quality",
           "Check for performance issues (N+1 queries, memory leaks, etc.)",
@@ -349,12 +355,12 @@ The loop runs until all stories have `passes: true`, bounded by `--max-iteration
         "priority": 997,
         "passes": false,
         "attempts": 0,
-        "notes": "Auto-generated review step (GPT 5.3 Codex). Output findings to <lazy-dev>/features/<feature>/review-gpt.md (substitute actual feature name and lazy-dev path)"
+        "notes": "Auto-generated first review step. Output findings to <lazy-dev>/features/<feature>/review-gpt.md (substitute actual feature name and lazy-dev path)"
       },
       {
         "id": "[JIRA-123-REVIEW-2 or US-REVIEW-2 if no Jira]",
-        "title": "Code review - Gemini 3 Pro",
-        "description": "As a principal engineer, I need to perform an independent second code review of all changes using Gemini 3 Pro.",
+        "title": "Code review (second pass)",
+        "description": "As a principal engineer, I need to perform an independent second code review of all changes.",
         "acceptanceCriteria": [
           "Review all new/modified files for code quality (independent of first review)",
           "Check for security vulnerabilities and edge cases",
@@ -366,15 +372,15 @@ The loop runs until all stories have `passes: true`, bounded by `--max-iteration
         "priority": 998,
         "passes": false,
         "attempts": 0,
-        "notes": "Auto-generated review step (Gemini 3 Pro). Output findings to <lazy-dev>/features/<feature>/review-gemini.md (substitute actual feature name and lazy-dev path)"
+        "notes": "Auto-generated second review step. Output findings to <lazy-dev>/features/<feature>/review-gemini.md (substitute actual feature name and lazy-dev path)"
       },
       {
         "id": "[JIRA-123-IMPL-RECS or US-IMPLEMENT-RECS if no Jira]",
         "title": "Implement code review recommendations",
         "description": "As a developer, I need to implement the recommendations and fixes identified during both code reviews.",
         "acceptanceCriteria": [
-          "Read review-gpt.md for GPT 5.3 Codex review findings",
-          "Read review-gemini.md for Gemini 3 Pro review findings",
+          "Read review-gpt.md for first review findings",
+          "Read review-gemini.md for second review findings",
           "Synthesize and prioritize recommendations from both reviews",
           "Address all critical and high-priority issues from both reviews",
           "Re-verify all previous acceptance criteria still pass",
@@ -384,7 +390,7 @@ The loop runs until all stories have `passes: true`, bounded by `--max-iteration
         "priority": 999,
         "passes": false,
         "attempts": 0,
-        "notes": "Auto-generated implementation step (Opus 4.6). Read both review-gpt.md and review-gemini.md from feature directory."
+        "notes": "Auto-generated implementation step. Read both review-gpt.md and review-gemini.md from feature directory."
       }
     ]
   }
@@ -573,10 +579,7 @@ After both reviews, **immediately apply all recommended changes** to the PRD:
 
 3. **Next Steps Guidance:**
    * Inform the user that the PRD is ready for the agent loop.
-   * Provide the command to start implementation:
-     ```
-     cd <lazy-dev-directory> && ./lazy.sh features/<feature-name>
-     ```
+   * Tell them to run `lazydev` and choose option **2** (Implement a feature) to start implementation.
    * Explain that the agent will:
      - Pick up the highest priority incomplete story
      - Break it into sub-tasks
@@ -791,8 +794,8 @@ Before finalizing the PRD, verify:
 - [ ] Priorities are unique and sequential (no duplicates: 1, 2, 3...)
 - [ ] Story IDs are unique and sequential (US-001, US-002...)
 - [ ] Non-goals/out-of-scope items documented in notes
-- [ ] **US-REVIEW included with priority 997** (first code review - GPT 5.3 Codex, outputs to review-gpt.md)
-- [ ] **US-REVIEW-2 included with priority 998** (second code review - Gemini 3 Pro, outputs to review-gemini.md)
+- [ ] **US-REVIEW included with priority 997** (first code review, outputs to review-gpt.md)
+- [ ] **US-REVIEW-2 included with priority 998** (second code review, outputs to review-gemini.md)
 - [ ] **US-IMPLEMENT-RECS included with priority 999** (implement recommendations from both reviews)
 - [ ] **Each story includes note:** "Follow project rules in .cursor/rules/ folder (if it exists in this project)"
 - [ ] **If Jira task was mentioned:** `jiraTaskId` field is set and branch name includes it

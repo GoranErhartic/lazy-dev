@@ -1,6 +1,6 @@
 ---
 description: "Agent loop protocol - iteration behavior, handoffs, state management"
-alwaysApply: true
+alwaysApply: false
 ---
 
 # Agent Loop Protocol

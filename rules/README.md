@@ -6,19 +6,24 @@ Shared rules that apply to all features in the agent loop.
 
 ```
 rules/
-├── agent-loop.mdc         # Core iteration behavior (alwaysApply)
-├── task-breakdown.mdc     # Story decomposition (alwaysApply)
-├── quality-gates.mdc      # Verification checklists (alwaysApply)
-├── pattern-discovery.mdc  # Capturing reusable patterns (alwaysApply)
+├── agent-loop.mdc         # Core iteration behavior (injected by lazy.sh)
+├── task-breakdown.mdc     # Story decomposition (injected by lazy.sh)
+├── quality-gates.mdc      # Verification checklists (injected by lazy.sh)
+├── pattern-discovery.mdc  # Capturing reusable patterns (injected by lazy.sh)
 └── discovered/            # Cross-feature discovered patterns
     └── .gitkeep
 ```
 
 ## Rule Types
 
-### Always Applied (`alwaysApply: true`)
+### Core Protocol (injected by the loop, `alwaysApply: false`)
 
-Core rules active for every agent invocation:
+These are set to `alwaysApply: false` so Cursor does NOT auto-load them into
+regular chats. `lazy.sh` inlines the full text of each file into the agent prompt
+("Injected Protocol") on every iteration, so the agent loop follows them without
+relying on Cursor's rule discovery. In Cursor they remain available as manual
+rules (mention with `@` if you ever want them in a normal chat).
+
 - `agent-loop.mdc` - How to operate in the iteration loop
 - `task-breakdown.mdc` - How to decompose stories
 - `quality-gates.mdc` - What checks must pass

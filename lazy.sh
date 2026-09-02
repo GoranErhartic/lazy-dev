@@ -6,6 +6,9 @@
 # Runs continuously until ALL user stories in PRD have passes: true.
 # Always runs in headless mode with auto-approve (YOLO mode).
 #
+# This script is designed to be called by the lazydev CLI wrapper (menu option 2)
+# or directly: ./lazy.sh <feature-name>
+#
 # ╔═══════════════════════════════════════════════════════════════════════════╗
 # ║                        ⚠️  GIT SAFETY POLICY  ⚠️                           ║
 # ╠═══════════════════════════════════════════════════════════════════════════╣
@@ -45,9 +48,9 @@ print_usage() {
     echo "  LAZY_DEV_MAX_ITERATIONS=<n>  Maximum iterations (default: 20)"
     echo "  LAZY_DEV_FASTFAIL_SECS=<s>   Failed iterations shorter than this are not retried (default: 60; 0 disables)"
     echo "  LAZY_DEV_FAKE_AGENT=<path>   Test hook: run this executable instead of the Cursor CLI"
-    echo "  LAZY_DEV_MODEL_IMPL=<id>     Implementation story model (default: opus-4.6)"
-    echo "  LAZY_DEV_MODEL_REVIEW=<id>   First review story model (default: gpt-5.3-codex)"
-    echo "  LAZY_DEV_MODEL_REVIEW2=<id>  Second review story model (default: gemini-3-pro)"
+    echo "  LAZY_DEV_MODEL_IMPL=<id>     Implementation story model (default: composer-2.5)"
+    echo "  LAZY_DEV_MODEL_REVIEW=<id>   First review story model (default: composer-2.5)"
+    echo "  LAZY_DEV_MODEL_REVIEW2=<id>  Second review story model (default: composer-2.5)"
     echo "  LAZY_DEV_GATE_TIMEOUT=<s>    Per-gate build/test timeout in seconds (default: 600)"
     echo "  LAZY_DEV_MAX_COST=<usd>      Stop when cumulative session cost exceeds this (decimal USD)"
     echo "  LAZY_DEV_MAX_MINUTES=<n>     Stop when cumulative session duration exceeds this (minutes)"
@@ -214,11 +217,12 @@ FASTFAIL_SECS="${LAZY_DEV_FASTFAIL_SECS:-60}"
 #   LAZY_DEV_FAKE_AGENT=/path/to/fake-agent.sh ./lazy.sh my-feature
 LAZY_DEV_FAKE_AGENT="${LAZY_DEV_FAKE_AGENT:-}"
 
-# Per-type model overrides (consumed by get_model_for_story; per-story .model
-# field in prd.json still wins via resolve_model_for_story)
-LAZY_DEV_MODEL_IMPL="${LAZY_DEV_MODEL_IMPL:-opus-4.6}"
-LAZY_DEV_MODEL_REVIEW="${LAZY_DEV_MODEL_REVIEW:-gpt-5.3-codex}"
-LAZY_DEV_MODEL_REVIEW2="${LAZY_DEV_MODEL_REVIEW2:-gemini-3-pro}"
+# Per-type model selection (consumed by get_model_for_story).
+# Set LAZY_DEV_MODELS_CONFIGURED=1 via lazydev after first-time model picker.
+LAZY_DEV_MODELS_CONFIGURED=0
+LAZY_DEV_MODEL_IMPL="${LAZY_DEV_MODEL_IMPL:-composer-2.5}"
+LAZY_DEV_MODEL_REVIEW="${LAZY_DEV_MODEL_REVIEW:-composer-2.5}"
+LAZY_DEV_MODEL_REVIEW2="${LAZY_DEV_MODEL_REVIEW2:-composer-2.5}"
 
 # Per-gate build/test timeout (seconds); consumed by run_quality_gate
 LAZY_DEV_GATE_TIMEOUT="${LAZY_DEV_GATE_TIMEOUT:-600}"
@@ -541,6 +545,13 @@ parse_agent_output() {
                     warn_event_shape "tool_call:empty" "$line"
                     continue
                 fi
+
+                # Skip internal Cursor CLI hook tools (not user-facing agent actions)
+                case "$tool_name" in
+                    hook*ToolCall)
+                        continue
+                        ;;
+                esac
                 
                 # Extract the path/command from args based on tool type
                 case "$tool_name" in
@@ -1612,10 +1623,7 @@ validate_prd() {
 # Get the appropriate model for a specific story ID (type/suffix mapping)
 # Usage: model=$(get_model_for_story "$story_id")
 # Suffix order matters: *-REVIEW-2 is checked before *-REVIEW.
-# Returns:
-#   - gpt-5.3-codex for *-REVIEW (first code review)
-#   - gemini-3-pro for *-REVIEW-2 (second code review)
-#   - opus-4.6 for *IMPL-RECS, *IMPLEMENT-RECS, and all other stories
+# Uses LAZY_DEV_MODEL_IMPL / LAZY_DEV_MODEL_REVIEW / LAZY_DEV_MODEL_REVIEW2.
 get_model_for_story() {
     local story_id="$1"
 
@@ -1633,34 +1641,6 @@ get_model_for_story() {
             echo "$LAZY_DEV_MODEL_IMPL"
             ;;
     esac
-}
-
-
-# Get per-story model override from PRD (empty string if absent or unset)
-# Usage: override=$(get_story_model_override "$PRD_FILE" "$story_id")
-get_story_model_override() {
-    local prd_file="$1"
-    local story_id="$2"
-
-    jq -r --arg id "$story_id" '
-        [.userStories[]? | select(.id == $id) | .model // ""] | .[0] // ""
-    ' "$prd_file" 2>/dev/null || true
-}
-
-# Resolve model for a story: per-story .model field wins, else suffix/type mapping
-# Usage: model=$(resolve_model_for_story "$PRD_FILE" "$story_id")
-resolve_model_for_story() {
-    local prd_file="$1"
-    local story_id="$2"
-    local override
-
-    override=$(get_story_model_override "$prd_file" "$story_id")
-    if [ -n "$override" ]; then
-        echo "$override"
-        return 0
-    fi
-
-    get_model_for_story "$story_id"
 }
 
 # Returns 0 if story_id is a code-review story (*-REVIEW or *-REVIEW-2)
@@ -2130,47 +2110,47 @@ setup_feature_branch() {
     echo ""
 }
 
-# Ensure Cursor discovers lazy-dev commands at .cursor/commands/lazy-dev/
-ensure_cursor_commands_symlink() {
-    local commands_src="$SCRIPT_DIR/commands"
-    local cursor_commands_dir="$PROJECT_ROOT/.cursor/commands"
-    local symlink_path="$cursor_commands_dir/lazy-dev"
+# Ensure Cursor discovers the generate-prd skill at .cursor/skills/generate-prd
+ensure_cursor_skills_symlink() {
+    local skill_src="$SCRIPT_DIR/skills/generate-prd"
+    local cursor_skills_dir="$PROJECT_ROOT/.cursor/skills"
+    local symlink_path="$cursor_skills_dir/generate-prd"
     local rel_target
 
-    if [ ! -d "$commands_src" ]; then
-        log_debug "No commands directory at $commands_src — skipping Cursor commands symlink"
+    if [ ! -d "$skill_src" ]; then
+        log_debug "No generate-prd skill at $skill_src — skipping skills symlink"
         return 0
     fi
 
-    mkdir -p "$cursor_commands_dir"
+    mkdir -p "$cursor_skills_dir"
 
     if [ -L "$symlink_path" ]; then
-        if [ -f "$symlink_path/generate-prd.md" ]; then
-            log_debug "Cursor command symlink OK: $symlink_path"
+        if [ -f "$symlink_path/SKILL.md" ]; then
+            log_debug "Cursor skills symlink OK: $symlink_path"
         else
-            log_warn "Cursor command symlink exists but does not resolve to commands: $symlink_path"
+            log_warn "Skills symlink exists but does not resolve to generate-prd: $symlink_path"
         fi
         return 0
     fi
 
     if [ -e "$symlink_path" ]; then
-        log_warn "$symlink_path exists but is not a symlink — skipping Cursor commands symlink"
+        log_warn "$symlink_path exists but is not a symlink — skipping skills symlink (possible name collision)"
         return 0
     fi
 
     if command -v python3 &> /dev/null; then
-        local commands_src_abs cursor_commands_abs
-        commands_src_abs="$(cd "$commands_src" && pwd -P)"
-        cursor_commands_abs="$(cd "$cursor_commands_dir" && pwd -P)"
-        rel_target=$(python3 -c "import os.path; print(os.path.relpath('$commands_src_abs', '$cursor_commands_abs'))")
+        local skill_src_abs cursor_skills_abs
+        skill_src_abs="$(cd "$skill_src" && pwd -P)"
+        cursor_skills_abs="$(cd "$cursor_skills_dir" && pwd -P)"
+        rel_target=$(python3 -c "import os.path; print(os.path.relpath('$skill_src_abs', '$cursor_skills_abs'))")
     else
-        rel_target="../lazy-dev/commands"
+        rel_target="../../lazy-dev/skills/generate-prd"
     fi
 
     if ln -s "$rel_target" "$symlink_path"; then
-        log_info "Created Cursor command symlink: $symlink_path → $rel_target"
+        log_info "Created Cursor skills symlink: $symlink_path → $rel_target"
     else
-        log_warn "Failed to create Cursor command symlink: $symlink_path"
+        log_warn "Failed to create skills symlink: $symlink_path"
     fi
 }
 
@@ -2196,7 +2176,7 @@ verify_setup() {
         exit 1
     fi
 
-    ensure_cursor_commands_symlink
+    ensure_cursor_skills_symlink
 
     # Create discovered directory if it doesn't exist
     mkdir -p "$DISCOVERED_DIR"
@@ -2546,14 +2526,13 @@ This iteration you will work EXACTLY one story: ${next_story_id} — ${next_stor
     CURSOR_ARGS+=("-p" "--force" "--output-format" "stream-json" "--workspace" "$PROJECT_ROOT")
 
     # Select appropriate model for the assigned story
-    # Suffix mapping: *-REVIEW → first review model; *-REVIEW-2 → second review model;
-    # per-story "model" field in prd.json overrides type mapping when present
+    # Suffix mapping: *-REVIEW → first review model; *-REVIEW-2 → second review model
     local selected_model=""
 
     if [ "${LAZY_DEV_FORCE_CLI_DEFAULT_MODEL:-0}" = "1" ]; then
         log_info "Story: ${BOLD}${next_story_id}${NC} → Model: ${BOLD}CLI default${NC} (--model omitted)"
     else
-        selected_model=$(resolve_model_for_story "$PRD_FILE" "$next_story_id")
+        selected_model=$(get_model_for_story "$next_story_id")
         if [ -n "$selected_model" ]; then
             CURSOR_ARGS+=("--model" "$selected_model")
             LAST_ITERATION_USED_EXPLICIT_MODEL=1

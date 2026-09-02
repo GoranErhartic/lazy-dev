@@ -10,7 +10,7 @@ You are an autonomous coding agent working in an iterative loop. Each iteration,
 
 ### The Rule
 - **All questions were answered during PRD generation** - The PRD should contain all requirements
-- **If you need external data, USE YOUR TOOLS** - You have `mcp_open-websearch_search` and `mcp_context7_*` tools available
+- **If you need external data, USE YOUR TOOLS** - check if the user has set up `Context7` mcp and use your available web search tools 
 - **If you encounter ambiguity, make a reasonable decision** and document it in `progress.txt`
 - **If truly blocked, fail the story** with detailed notes — do NOT ask for user input (see **Failing a Story** below)
 
@@ -157,14 +157,14 @@ git commit -m "chore: US-REVIEW - Code review and cleanup"
 
 ## 🔍 Dual-Model Code Review System
 
-The lazy-dev loop uses **different AI models** for different story types to maximize code quality:
+The lazy-dev loop uses **different AI models** for different story types. Models are configured in `lazy.sh` via `LAZY_DEV_MODEL_IMPL`, `LAZY_DEV_MODEL_REVIEW`, and `LAZY_DEV_MODEL_REVIEW2` (default: `composer-2.5`):
 
-| Story ID | Model | Purpose |
-|----------|-------|---------|
-| US-001 to US-NNN | Opus 4.6 | Implementation stories |
-| *-REVIEW (e.g. US-REVIEW, MED-523-REVIEW) | GPT 5.3 Codex | First code review |
-| *-REVIEW-2 (e.g. US-REVIEW-2, MED-523-REVIEW-2) | Gemini 3 Pro | Second code review |
-| *IMPL-RECS / *IMPLEMENT-RECS | Opus 4.6 | Implement review findings |
+| Story ID | Config variable | Purpose |
+|----------|-----------------|---------|
+| US-001 to US-NNN | `LAZY_DEV_MODEL_IMPL` | Implementation stories |
+| *-REVIEW (e.g. US-REVIEW, MED-523-REVIEW) | `LAZY_DEV_MODEL_REVIEW` | First code review |
+| *-REVIEW-2 (e.g. US-REVIEW-2, MED-523-REVIEW-2) | `LAZY_DEV_MODEL_REVIEW2` | Second code review |
+| *IMPL-RECS / *IMPLEMENT-RECS | `LAZY_DEV_MODEL_IMPL` | Implement review findings |
 
 Story IDs may be Jira-prefixed (e.g. `MED-523-REVIEW`); the loop selects models by **suffix**, not the literal `US-*` id.
 
@@ -176,17 +176,17 @@ Each review story MUST output findings to an independent file:
 
 | Story | Output File | Purpose |
 |-------|-------------|---------|
-| US-REVIEW | `<lazy-dev>/features/<feature>/review-gpt.md` (see Feature Context for exact path) | GPT 5.3 Codex findings |
-| US-REVIEW-2 | `<lazy-dev>/features/<feature>/review-gemini.md` (see Feature Context for exact path) | Gemini 3 Pro findings |
+| US-REVIEW | `<lazy-dev>/features/<feature>/review-gpt.md` (see Feature Context for exact path) | First review findings |
+| US-REVIEW-2 | `<lazy-dev>/features/<feature>/review-gemini.md` (see Feature Context for exact path) | Second review findings |
 
-### US-REVIEW (GPT 5.3 Codex) Instructions
+### US-REVIEW (First Pass) Instructions
 
 When processing US-REVIEW:
 1. Perform a comprehensive code review of all implementation changes
 2. Check for performance issues, security vulnerabilities, and code quality
 3. **Create `review-gpt.md`** in the feature directory with structured findings:
    ```markdown
-   # Code Review Findings - GPT 5.3 Codex
+   # Code Review Findings - First Pass
    
    ## Critical Issues
    - [List critical issues that must be fixed]
@@ -204,14 +204,14 @@ When processing US-REVIEW:
    [Brief summary of overall code quality]
    ```
 
-### US-REVIEW-2 (Gemini 3 Pro) Instructions
+### US-REVIEW-2 (Second Pass) Instructions
 
 When processing US-REVIEW-2:
 1. Perform an **independent** code review (do NOT read review-gpt.md)
 2. Focus on different aspects: security vulnerabilities, edge cases, architectural improvements
 3. **Create `review-gemini.md`** in the feature directory with structured findings:
    ```markdown
-   # Code Review Findings - Gemini 3 Pro
+   # Code Review Findings - Second Pass
    
    ## Critical Issues
    - [List critical issues that must be fixed]
@@ -229,7 +229,7 @@ When processing US-REVIEW-2:
    [Brief summary of overall code quality]
    ```
 
-### US-IMPLEMENT-RECS (Opus 4.6) Instructions
+### US-IMPLEMENT-RECS Instructions
 
 When processing US-IMPLEMENT-RECS:
 1. **Read both review files** (in the feature directory; paths in your Feature Context):

@@ -47,8 +47,8 @@
     },
     {
       "id": "US-REVIEW",
-      "title": "Code review - GPT 5.3 Codex",
-      "description": "As a principal engineer, I need to perform a thorough code review of all changes made during this feature implementation using GPT 5.3 Codex.",
+      "title": "Code review (first pass)",
+      "description": "As a principal engineer, I need to perform a thorough code review of all changes made during this feature implementation.",
       "acceptanceCriteria": [
         "Review all new/modified files for code quality",
         "Check for performance issues (unnecessary re-renders, missing memoization)",
@@ -64,8 +64,8 @@
     },
     {
       "id": "US-REVIEW-2",
-      "title": "Code review - Gemini 3 Pro",
-      "description": "As a principal engineer, I need to perform an independent second code review of all changes made during this feature implementation using Gemini 3 Pro.",
+      "title": "Code review (second pass)",
+      "description": "As a principal engineer, I need to perform an independent second code review of all changes made during this feature implementation.",
       "acceptanceCriteria": [
         "Review all new/modified files for code quality (independent of first review)",
         "Check for security vulnerabilities and edge cases",
@@ -84,8 +84,8 @@
       "title": "Implement code review recommendations",
       "description": "As a developer, I need to implement the recommendations and fixes identified during both code reviews.",
       "acceptanceCriteria": [
-        "Read review-gpt.md for GPT 5.3 Codex review findings",
-        "Read review-gemini.md for Gemini 3 Pro review findings",
+        "Read review-gpt.md for first review findings",
+        "Read review-gemini.md for second review findings",
         "Synthesize and prioritize recommendations from both reviews",
         "Address all critical and high-priority issues from both reviews",
         "Re-verify all previous acceptance criteria still pass",

@@ -1,6 +1,6 @@
 ---
 description: "Quality gates and verification checklists - Definition of Done"
-alwaysApply: true
+alwaysApply: false
 ---
 
 # Quality Gates

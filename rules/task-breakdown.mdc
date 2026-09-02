@@ -1,6 +1,6 @@
 ---
 description: "Task decomposition protocol - breaking stories into atomic sub-tasks"
-alwaysApply: true
+alwaysApply: false
 ---
 
 # Task Breakdown Protocol
