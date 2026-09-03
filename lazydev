@@ -260,6 +260,7 @@ save_models_to_lazy_sh() {
         -e "s|^LAZY_DEV_MODEL_REVIEW=.*|LAZY_DEV_MODEL_REVIEW=\"\${LAZY_DEV_MODEL_REVIEW:-${review}}\"|" \
         -e "s|^LAZY_DEV_MODEL_REVIEW2=.*|LAZY_DEV_MODEL_REVIEW2=\"\${LAZY_DEV_MODEL_REVIEW2:-${review2}}\"|" \
         "$LAZY_SH" > "$tmp" && mv "$tmp" "$LAZY_SH"
+    chmod +x "$LAZY_SH"
 
     log_success "Model configuration saved to lazy.sh"
 }

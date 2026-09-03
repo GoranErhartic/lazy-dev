@@ -38,7 +38,7 @@ A story is complete when:
 - [ ] Existing tests still pass
 - [ ] New tests added for non-trivial logic
 - [ ] No secrets or credentials in code
-- [ ] Changes committed with clear message
+- [ ] Runner committed successfully after the iteration (all changes in one commit)
 - [ ] PRD updated with `passes: true`
 - [ ] Progress log updated
 

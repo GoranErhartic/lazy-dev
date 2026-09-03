@@ -4,21 +4,15 @@
 #
 # Each feature gets its own subfolder with isolated state.
 # Runs continuously until ALL user stories in PRD have passes: true.
-# Always runs in headless mode with auto-approve (YOLO mode).
-#
-# This script is designed to be called by the lazydev CLI wrapper (menu option 2)
-# or directly: ./lazy.sh <feature-name>
+# Always runs in headless mode with --auto-review (Smart Auto approval).
 #
 # ╔═══════════════════════════════════════════════════════════════════════════╗
-# ║                        ⚠️  GIT SAFETY POLICY  ⚠️                           ║
+# ║                        GIT POLICY (runner-owned)                          ║
 # ╠═══════════════════════════════════════════════════════════════════════════╣
-# ║  ✅ ALLOWED: git commit                                                   ║
-# ║  ❌ FORBIDDEN: git push (NEVER - this is STRICTLY BLOCKED)               ║
-# ║                                                                           ║
-# ║  This script will:                                                        ║
-# ║  1. Ensure you're on the latest main branch                              ║
-# ║  2. Create a feature branch: feature/<feature-name>                      ║
-# ║  3. Block ALL push operations                                            ║
+# ║  1. Fail fast if working tree is not clean at session/iteration start    ║
+# ║  2. On main: prompt for branch name; otherwise stay on current branch    ║
+# ║  3. Runner commits all changes (git add -A) after each story              ║
+# ║  4. Git push is BLOCKED during the session                               ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
 set -e
@@ -30,7 +24,6 @@ print_usage() {
     echo "Options:"
     echo "  --verbose, -v          Enable verbose/debug output"
     echo "  --max-iterations N     Set maximum iterations (default: 20)"
-    echo "  --rebase               Rebase an existing feature branch onto latest main (default: skip when branch has commits)"
     echo "  --help, -h             Show this help message"
     echo ""
     echo "Runs continuously until ALL user stories in PRD have passes: true."
@@ -48,10 +41,12 @@ print_usage() {
     echo "  LAZY_DEV_MAX_ITERATIONS=<n>  Maximum iterations (default: 20)"
     echo "  LAZY_DEV_FASTFAIL_SECS=<s>   Failed iterations shorter than this are not retried (default: 60; 0 disables)"
     echo "  LAZY_DEV_FAKE_AGENT=<path>   Test hook: run this executable instead of the Cursor CLI"
-    echo "  LAZY_DEV_MODEL_IMPL=<id>     Implementation story model (default: composer-2.5)"
-    echo "  LAZY_DEV_MODEL_REVIEW=<id>   First review story model (default: composer-2.5)"
-    echo "  LAZY_DEV_MODEL_REVIEW2=<id>  Second review story model (default: composer-2.5)"
+    echo "  LAZY_DEV_MODEL_IMPL=<id>     Implementation story model (default: opus-4.6)"
+    echo "  LAZY_DEV_MODEL_REVIEW=<id>   First review story model (default: gpt-5.3-codex)"
+    echo "  LAZY_DEV_MODEL_REVIEW2=<id>  Second review story model (default: gemini-3-pro)"
     echo "  LAZY_DEV_GATE_TIMEOUT=<s>    Per-gate build/test timeout in seconds (default: 600)"
+    echo "  LAZY_DEV_STALL_TIMEOUT=<s>   Kill if agent output is idle this long (default: 600)"
+    echo "  LAZY_DEV_RESULT_TAIL_HANG_TIMEOUT=<s> Kill if result received but pipeline alive (default: 10)"
     echo "  LAZY_DEV_MAX_COST=<usd>      Stop when cumulative session cost exceeds this (decimal USD)"
     echo "  LAZY_DEV_MAX_MINUTES=<n>     Stop when cumulative session duration exceeds this (minutes)"
     echo ""
@@ -75,7 +70,6 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
 
 # Parse flags
 VERBOSE=""
-FORCE_REBASE=0
 SHOW_HELP=0
 while [[ "$1" == -* ]]; do
         case "$1" in
@@ -86,10 +80,6 @@ while [[ "$1" == -* ]]; do
         --max-iterations)
             shift
             MAX_ITERATIONS="$1"
-            shift
-            ;;
-        --rebase)
-            FORCE_REBASE=1
             shift
             ;;
         --help|-h)
@@ -191,6 +181,10 @@ ITERATION_TIMEOUT="${LAZY_DEV_TIMEOUT:-1800}"
 # (default 600). Override with LAZY_DEV_STALL_TIMEOUT.
 STALL_TIMEOUT="${LAZY_DEV_STALL_TIMEOUT:-600}"
 
+# Kill pipeline if result NDJSON arrived but process is still alive (default 10s).
+# Override with LAZY_DEV_RESULT_TAIL_HANG_TIMEOUT.
+RESULT_TAIL_HANG_TIMEOUT="${LAZY_DEV_RESULT_TAIL_HANG_TIMEOUT:-10}"
+
 # Maximum iterations to prevent infinite loops (default 20)
 # Precedence: --max-iterations flag (parsed above) > LAZY_DEV_MAX_ITERATIONS
 # env var > 20. Guarded so the flag value is not clobbered by this line.
@@ -217,12 +211,11 @@ FASTFAIL_SECS="${LAZY_DEV_FASTFAIL_SECS:-60}"
 #   LAZY_DEV_FAKE_AGENT=/path/to/fake-agent.sh ./lazy.sh my-feature
 LAZY_DEV_FAKE_AGENT="${LAZY_DEV_FAKE_AGENT:-}"
 
-# Per-type model selection (consumed by get_model_for_story).
-# Set LAZY_DEV_MODELS_CONFIGURED=1 via lazydev after first-time model picker.
-LAZY_DEV_MODELS_CONFIGURED=0
-LAZY_DEV_MODEL_IMPL="${LAZY_DEV_MODEL_IMPL:-composer-2.5}"
-LAZY_DEV_MODEL_REVIEW="${LAZY_DEV_MODEL_REVIEW:-composer-2.5}"
-LAZY_DEV_MODEL_REVIEW2="${LAZY_DEV_MODEL_REVIEW2:-composer-2.5}"
+# Per-type model overrides (consumed by get_model_for_story; per-story .model
+# field in prd.json still wins via resolve_model_for_story)
+LAZY_DEV_MODEL_IMPL="${LAZY_DEV_MODEL_IMPL:-opus-4.6}"
+LAZY_DEV_MODEL_REVIEW="${LAZY_DEV_MODEL_REVIEW:-gpt-5.3-codex}"
+LAZY_DEV_MODEL_REVIEW2="${LAZY_DEV_MODEL_REVIEW2:-gemini-3-pro}"
 
 # Per-gate build/test timeout (seconds); consumed by run_quality_gate
 LAZY_DEV_GATE_TIMEOUT="${LAZY_DEV_GATE_TIMEOUT:-600}"
@@ -525,107 +518,9 @@ parse_agent_output() {
                 fi
                 ;;
             "tool_call")
-                # Display tool calls in condensed format
-                # Cursor CLI structure: { "type": "tool_call", "tool_call": { "readToolCall": { "args": {...} } } }
-                
-                # Only show "started" events, skip "completed" to avoid duplicates
-                local subtype
-                subtype=$(safe_jq '.subtype // ""' "$line")
-                if [ "$subtype" = "completed" ]; then
-                    continue
-                fi
-                
-                local tool_name display_param
-                
-                # Tool name is the first KEY inside .tool_call object (e.g., "readToolCall", "writeToolCall")
-                tool_name=$(safe_jq '.tool_call | keys | .[0] // ""' "$line")
-                
-                # Skip if no tool name extracted
-                if [ -z "$tool_name" ] || [ "$tool_name" = "null" ]; then
-                    warn_event_shape "tool_call:empty" "$line"
-                    continue
-                fi
-
-                # Skip internal Cursor CLI hook tools (not user-facing agent actions)
-                case "$tool_name" in
-                    hook*ToolCall)
-                        continue
-                        ;;
-                esac
-                
-                # Extract the path/command from args based on tool type
-                case "$tool_name" in
-                    readToolCall|read_file)
-                        display_param=$(safe_jq '.tool_call.readToolCall.args.path // .tool_call.read_file.args.path // ""' "$line")
-                        tool_name="read"
-                        ;;
-                    writeToolCall|write)
-                        display_param=$(safe_jq '.tool_call.writeToolCall.args.path // .tool_call.write.args.path // ""' "$line")
-                        tool_name="write"
-                        ;;
-                    editToolCall|edit|search_replace)
-                        display_param=$(safe_jq '.tool_call.editToolCall.args.path // .tool_call.edit.args.path // ""' "$line")
-                        tool_name="edit"
-                        ;;
-                    terminalToolCall|run_terminal_cmd|terminal)
-                        display_param=$(safe_jq '.tool_call.terminalToolCall.args.command // .tool_call.terminal.args.command // ""' "$line")
-                        tool_name="run"
-                        # Truncate long commands
-                        if [ ${#display_param} -gt 60 ]; then
-                            display_param="${display_param:0:57}..."
-                        fi
-                        ;;
-                    grepToolCall|grep)
-                        display_param=$(safe_jq '.tool_call.grepToolCall.args.pattern // .tool_call.grep.args.pattern // ""' "$line")
-                        tool_name="grep"
-                        if [ ${#display_param} -gt 40 ]; then
-                            display_param="${display_param:0:37}..."
-                        fi
-                        ;;
-                    searchToolCall|codebase_search|search)
-                        display_param=$(safe_jq '.tool_call.searchToolCall.args.query // .tool_call.codebase_search.args.query // ""' "$line")
-                        tool_name="search"
-                        if [ ${#display_param} -gt 40 ]; then
-                            display_param="${display_param:0:37}..."
-                        fi
-                        ;;
-                    listDirToolCall|list_dir)
-                        display_param=$(safe_jq '.tool_call.listDirToolCall.args.path // .tool_call.list_dir.args.path // ""' "$line")
-                        tool_name="ls"
-                        ;;
-                    *)
-                        # For unknown tools, try to get first arg value
-                        display_param=$(safe_jq ".tool_call.${tool_name}.args | to_entries | .[0].value // \"\"" "$line")
-                        if [ ${#display_param} -gt 50 ]; then
-                            display_param="${display_param:0:47}..."
-                        fi
-                        # Simplify tool name (remove "ToolCall" suffix)
-                        tool_name="${tool_name%ToolCall}"
-                        ;;
-                esac
-                
-                # Close assistant streaming block if active
-                if [ "$assistant_streaming" = "1" ]; then
-                    printf "${NC}\r\n"
-                    assistant_streaming=0
-                fi
-                
-                # Close thinking block if we were thinking
-                if [ "$thinking_started" = "1" ]; then
-                    printf "${NC}\r\n\r\n"  # Reset color and add spacing
-                    thinking_started=0
-                fi
-                
-                # Now stop spinner and display the tool call
-                stop_spinner
-                
-                if [ -n "$display_param" ] && [ "$display_param" != "null" ]; then
-                    print_line "  ${DIM}→ ${tool_name}: ${display_param}${NC}"
-                else
-                    print_line "  ${DIM}→ ${tool_name}${NC}"
-                fi
-                
-                start_spinner "Agent working"
+                # Tool calls (read, write, terminal, MCP, hooks, etc.) add noise
+                # without user value — skip all display (started and completed).
+                continue
                 ;;
             "result")
                 # Close assistant streaming block if active
@@ -746,29 +641,56 @@ kill_tree() {
     kill -"$signal" "$pid" 2>/dev/null || true
 }
 
-# Kill all descendants of a PID with both TERM and KILL
+# Kill all descendants of a PID with both TERM and KILL.
+# Uses tree traversal only — never negative-PID group kills, which can SIGKILL
+# lazy.sh on macOS when job control is disabled.
 # Usage: kill_descendants PID
-# First tries killing by process group (negative PID), then falls back to tree traversal
 kill_descendants() {
     local pid="$1"
-    
+
     if [ -z "$pid" ]; then
         return 0
     fi
-    
-    # First try: kill by process group (most effective for subshells with job control)
-    # Negative PID kills the entire process group
-    kill -TERM -"$pid" 2>/dev/null || true
-    
-    # Second try: traverse the tree manually
+
     kill_tree "$pid" "TERM"
-    
-    # Brief pause for graceful shutdown
     sleep 0.3
-    
-    # Force kill pass: process group first, then tree
-    kill -9 -"$pid" 2>/dev/null || true
     kill_tree "$pid" "9"
+}
+
+# Safely terminate the agent pipeline subshell and its children.
+# Usage: kill_pipeline_safely <pid> [reason]
+kill_pipeline_safely() {
+    local pid="$1"
+    local reason="${2:-unknown}"
+
+    if [ -z "$pid" ]; then
+        return 0
+    fi
+
+    if ! kill -0 "$pid" 2>/dev/null; then
+        return 0
+    fi
+
+    log_debug "Safely killing pipeline PID $pid (reason: $reason)"
+    kill_descendants "$pid"
+
+    local i=0
+    while [ $i -lt 6 ] && kill -0 "$pid" 2>/dev/null; do
+        sleep 0.5
+        i=$((i + 1))
+    done
+
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -9 "$pid" 2>/dev/null || true
+        kill_descendants "$pid"
+    fi
+
+    if kill -0 "$pid" 2>/dev/null; then
+        log_warn "Pipeline PID $pid still alive after safe kill (reason: $reason)"
+        return 1
+    fi
+
+    return 0
 }
 
 # Last-resort sweep: kill only processes whose argv contains our session marker.
@@ -864,12 +786,9 @@ cleanup_iteration() {
     stop_spinner
     
     # Kill the pipeline subshell and ALL its descendants (recursive)
-    # Try process group first (most effective), then tree traversal
     if [ -n "$PIPELINE_PID" ]; then
-        log_debug "Killing pipeline process group/tree (PID: $PIPELINE_PID)..."
-        # Process group kill (negative PID)
-        kill -TERM -"$PIPELINE_PID" 2>/dev/null || true
-        kill_descendants "$PIPELINE_PID"
+        log_debug "Killing pipeline process tree (PID: $PIPELINE_PID)..."
+        kill_pipeline_safely "$PIPELINE_PID" "cleanup_iteration"
     fi
     PIPELINE_PID=""
     
@@ -1398,27 +1317,49 @@ handle_quality_gate_for_flip() {
     return 1
 }
 
-# Commit lazy-dev state files after each iteration (runner-owned; agents never commit lazy-dev).
-# Usage: commit_state [story-id]
-commit_state() {
+# Commit all working-tree changes after an iteration (runner-owned).
+# Usage: commit_iteration_changes [story-id]
+commit_iteration_changes() {
     local story_id="${1:-${LAST_ASSIGNED_STORY_ID:-unknown}}"
+    local commit_msg
 
-    if ! git -C "$PROJECT_ROOT" status --porcelain -- "$LAZY_DEV_REL" 2>/dev/null | grep -q .; then
-        log_debug "No lazy-dev state changes to commit"
-        return 0
-    fi
-
-    log_info "Committing lazy-dev state (feature: $FEATURE_NAME, story: $story_id)"
-    if ! git -C "$PROJECT_ROOT" add "$LAZY_DEV_REL"; then
-        log_error "Failed to stage lazy-dev state files"
+    if ! working_tree_is_dirty; then
+        log_error "No changes to commit for story $story_id"
         return 1
     fi
-    if ! git -C "$PROJECT_ROOT" commit -m "chore: lazy-dev state ($FEATURE_NAME, $story_id)"; then
-        log_error "Failed to commit lazy-dev state files"
+
+    commit_msg=$(build_iteration_commit_message "$story_id")
+    log_info "Committing all changes: $commit_msg"
+
+    if ! git -C "$PROJECT_ROOT" add -A; then
+        log_error "Failed to stage changes"
         return 1
     fi
-    log_success "Lazy-dev state committed"
+    if ! git -C "$PROJECT_ROOT" commit -m "$commit_msg"; then
+        log_error "Failed to commit changes"
+        return 1
+    fi
+    log_success "Committed story $story_id"
     return 0
+}
+
+# Revert a passes flip and exit when the iteration commit fails.
+fatal_iteration_commit_failure() {
+    local story_id="$1"
+    local passes_before="$2"
+    local passes_now
+
+    if [ -n "$story_id" ] && [ "$passes_before" != "true" ]; then
+        passes_now=$(jq -r --arg id "$story_id" \
+            '[.userStories[]? | select(.id == $id) | .passes] | first // false' \
+            "$PRD_FILE" 2>/dev/null || echo "false")
+        if [ "$passes_now" = "true" ]; then
+            revert_story_passes "$story_id" "$PRD_FILE"
+            log_warn "Reverted passes:true for $story_id after commit failure"
+        fi
+    fi
+    log_error "Iteration commit failed — stopping session (working tree may be dirty)"
+    exit 1
 }
 
 # Load cumulative totals from SESSION_STATS_FILE (one line per iteration:
@@ -1498,14 +1439,47 @@ report_budget_exceeded_and_exit() {
     log_error "═══════════════════════════════════════════════════════════════"
     echo ""
 
-    commit_state
+    if working_tree_is_dirty; then
+        commit_iteration_changes "${LAST_ASSIGNED_STORY_ID:-unknown}" \
+            || log_warn "Could not commit pending changes before budget exit"
+    fi
     exit 2
 }
 
+# Filter lazy-dev infrastructure noise from git status --porcelain lines.
+filter_infra_porcelain() {
+    local line path
+    local lazy_sh_path="${LAZY_DEV_REL}/lazy.sh"
+    local lazydev_path="${LAZY_DEV_REL}/lazydev"
+
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        path="${line:3}"
+        case "$path" in
+            .cursor|.cursor/*|*/.last-branch|.last-branch)
+                continue
+                ;;
+        esac
+        if [ "$path" = "$lazy_sh_path" ] || [ "$path" = "$lazydev_path" ] || \
+           [[ "$path" == "${lazydev_path}/"* ]]; then
+            continue
+        fi
+        printf '%s\n' "$line"
+    done
+}
+
 # Return git status --porcelain output, capped at N lines (default 30).
+# Infrastructure paths (lazy.sh, lazydev, .cursor, .last-branch) are excluded.
 get_git_porcelain_capped() {
     local max_lines="${1:-30}"
-    git status --porcelain 2>/dev/null | head -n "$max_lines"
+    git status --porcelain 2>/dev/null | filter_infra_porcelain | head -n "$max_lines"
+}
+
+# True when OUTPUT_FILE contains a terminal result NDJSON event.
+output_file_has_result_event() {
+    local output_file="$1"
+    [ -f "$output_file" ] || return 1
+    grep -qE '"type"[[:space:]]*:[[:space:]]*"result"' "$output_file" 2>/dev/null
 }
 
 # Append a killed-iteration marker to progress.txt (timeout or interrupt).
@@ -1539,7 +1513,7 @@ append_killed_iteration_marker() {
 }
 
 # Build a CONTEXT warning block when the working tree has pre-existing changes.
-# Usage: build_dirty_tree_warning <assigned-story-id>
+# Kept for diagnostics only (append_killed_iteration_marker); iterations start clean.
 build_dirty_tree_warning() {
     local assigned_story="$1"
     local porcelain
@@ -1623,7 +1597,10 @@ validate_prd() {
 # Get the appropriate model for a specific story ID (type/suffix mapping)
 # Usage: model=$(get_model_for_story "$story_id")
 # Suffix order matters: *-REVIEW-2 is checked before *-REVIEW.
-# Uses LAZY_DEV_MODEL_IMPL / LAZY_DEV_MODEL_REVIEW / LAZY_DEV_MODEL_REVIEW2.
+# Returns:
+#   - gpt-5.3-codex for *-REVIEW (first code review)
+#   - gemini-3-pro for *-REVIEW-2 (second code review)
+#   - opus-4.6 for *IMPL-RECS, *IMPLEMENT-RECS, and all other stories
 get_model_for_story() {
     local story_id="$1"
 
@@ -1641,6 +1618,34 @@ get_model_for_story() {
             echo "$LAZY_DEV_MODEL_IMPL"
             ;;
     esac
+}
+
+
+# Get per-story model override from PRD (empty string if absent or unset)
+# Usage: override=$(get_story_model_override "$PRD_FILE" "$story_id")
+get_story_model_override() {
+    local prd_file="$1"
+    local story_id="$2"
+
+    jq -r --arg id "$story_id" '
+        [.userStories[]? | select(.id == $id) | .model // ""] | .[0] // ""
+    ' "$prd_file" 2>/dev/null || true
+}
+
+# Resolve model for a story: per-story .model field wins, else suffix/type mapping
+# Usage: model=$(resolve_model_for_story "$PRD_FILE" "$story_id")
+resolve_model_for_story() {
+    local prd_file="$1"
+    local story_id="$2"
+    local override
+
+    override=$(get_story_model_override "$prd_file" "$story_id")
+    if [ -n "$override" ]; then
+        echo "$override"
+        return 0
+    fi
+
+    get_model_for_story "$story_id"
 }
 
 # Returns 0 if story_id is a code-review story (*-REVIEW or *-REVIEW-2)
@@ -1869,288 +1874,143 @@ remove_push_blocker() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
-# GIT STASH: Stash/pop lazy-dev files (script + features) during branch switching
+# GIT: Clean tree, branch setup, runner-owned commits
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Global flag to track if we stashed lazy-dev files
-LAZY_DEV_FILES_STASHED=0
-
-# Stash changes in the entire lazy-dev directory before switching branches
-# This includes the lazy.sh script itself, feature folders, rules, etc.
-stash_lazy_dev_files() {
-    local lazy_dev_dir="$1"
-    local stash_message="lazy-dev-stash-$(date +%s)"
-    
-    # Check if there are any changes (tracked or untracked) in the lazy-dev directory
-    local has_changes=0
-    
-    # Check for tracked changes in lazy-dev directory
-    if git status --porcelain -- "$lazy_dev_dir" 2>/dev/null | grep -q .; then
-        has_changes=1
-    fi
-    
-    # Check for untracked files in the lazy-dev directory
-    if [ -d "$lazy_dev_dir" ] && [ "$(ls -A "$lazy_dev_dir" 2>/dev/null)" ]; then
-        # There are files in the lazy-dev directory
-        if git status --porcelain -- "$lazy_dev_dir" 2>/dev/null | grep -q "^??"; then
-            has_changes=1
-        fi
-    fi
-    
-    if [ "$has_changes" = "1" ]; then
-        log_info "Stashing changes in lazy-dev folder: $lazy_dev_dir"
-        # Stash including untracked files (-u) for the entire lazy-dev directory
-        if git stash push -u -m "$stash_message" -- "$lazy_dev_dir" 2>/dev/null; then
-            log_success "Lazy-dev folder changes stashed (including lazy.sh script)"
-            LAZY_DEV_FILES_STASHED=1
-            return 0
-        else
-            log_warn "Could not stash lazy-dev folder changes (they may not be tracked)"
-            return 1
-        fi
-    else
-        log_debug "No changes to stash in lazy-dev folder"
-    fi
-    
-    return 1  # Nothing was stashed
+# True when the working tree has any uncommitted changes.
+working_tree_is_dirty() {
+    git -C "$PROJECT_ROOT" status --porcelain 2>/dev/null | grep -q .
 }
 
-# Pop the stashed lazy-dev files after branch setup
-pop_lazy_dev_stash() {
-    if [ "$LAZY_DEV_FILES_STASHED" = "1" ]; then
-        log_info "Restoring stashed lazy-dev folder changes..."
-        if git stash pop 2>/dev/null; then
-            log_success "Lazy-dev folder changes restored"
-            LAZY_DEV_FILES_STASHED=0
-        else
-            log_warn "Could not restore stashed changes automatically"
-            log_info "You may need to run 'git stash pop' manually or resolve conflicts"
-            log_info "Check stash with: git stash list"
-        fi
-    fi
-}
-
-# After branch setup + stash pop, ensure lazy-dev files are present (CHUNK-022)
-verify_lazy_dev_files_after_branch_setup() {
-    local missing=0
-
-    if [ ! -f "$PRD_FILE" ]; then
-        log_error "PRD file not found after branch setup: $PRD_FILE"
-        missing=1
-    fi
-    if [ ! -f "$PROMPT_FILE" ]; then
-        log_error "Prompt file not found after branch setup: $PROMPT_FILE"
-        missing=1
-    fi
-    if [ ! -d "$SCRIPT_DIR/examples" ]; then
-        log_error "examples/ directory not found after branch setup: $SCRIPT_DIR/examples"
-        missing=1
-    fi
-
-    if [ "$LAZY_DEV_FILES_STASHED" = "1" ] || [ "$missing" = "1" ]; then
-        log_error "lazy-dev files remain in the stash — run \`git stash list\` / \`git stash pop\` and resolve, then re-run"
+# Fail fast when the working tree is not clean.
+assert_clean_working_tree() {
+    if working_tree_is_dirty; then
+        log_error "Working tree is not clean. Commit or stash changes before continuing."
+        git -C "$PROJECT_ROOT" status --short
         exit 1
     fi
 }
 
-# ═══════════════════════════════════════════════════════════════════════════
-# GIT BRANCH SETUP: Always branch from latest main
-# ═══════════════════════════════════════════════════════════════════════════
-
-# True when branch name uses an allowed prefix (feature/, fix/, hotfix/, lazy/, dev/)
-is_sane_branch_name() {
+# Validate a user-supplied branch name for git.
+validate_branch_name() {
     local name="$1"
-    case "$name" in
-        feature/*|fix/*|hotfix/*|lazy/*|dev/*) return 0 ;;
-        *) return 1 ;;
-    esac
+    [ -n "$name" ] || return 1
+    git check-ref-format --branch "$name" 2>/dev/null
 }
 
-# PRD branchName wins when present and sane; otherwise feature/<feature_name>
-resolve_feature_branch_name() {
-    local feature_name="$1"
-    local prd_file="${2:-$PRD_FILE}"
-    local fallback="feature/$feature_name"
-    local prd_branch=""
+# Build a conventional commit message for the assigned story.
+build_iteration_commit_message() {
+    local story_id="$1"
+    local title jira_id commit_type
 
-    if [ -f "$prd_file" ]; then
-        prd_branch=$(jq -r '.branchName // empty' "$prd_file" 2>/dev/null || echo "")
+    title=$(jq -r --arg id "$story_id" \
+        '[.userStories[]? | select(.id == $id) | .title] | first // ""' \
+        "$PRD_FILE" 2>/dev/null || echo "")
+    jira_id=$(jq -r '.jiraTaskId // empty' "$PRD_FILE" 2>/dev/null || echo "")
+
+    commit_type="feat"
+    if is_review_story "$story_id"; then
+        commit_type="chore"
     fi
 
-    if [ -z "$prd_branch" ]; then
-        echo "$fallback"
-        return 0
+    if [ -n "$jira_id" ]; then
+        printf '%s: (%s) %s' "$commit_type" "$jira_id" "$title"
+    else
+        printf '%s: %s - %s' "$commit_type" "$story_id" "$title"
     fi
-
-    if is_sane_branch_name "$prd_branch"; then
-        echo "$prd_branch"
-        return 0
-    fi
-
-    log_warn "PRD branchName '$prd_branch' has unrecognized prefix; using $fallback" >&2
-    echo "$fallback"
 }
 
-setup_feature_branch() {
-    local feature_name="$1"
-    local branch_name
-    branch_name=$(resolve_feature_branch_name "$feature_name")
-    
-    # Verify we're in a git repository
-    if ! git rev-parse --git-dir &>/dev/null; then
+# Prompt on main/master; otherwise stay on the current branch.
+ensure_feature_branch() {
+    if ! git -C "$PROJECT_ROOT" rev-parse --git-dir &>/dev/null; then
         log_error "Not a git repository. Please run from within a git project."
         exit 1
     fi
-    
-    # Get current branch
-    local current_branch
-    current_branch=$(git branch --show-current)
-    
-    # If already on the feature branch, just ensure we're up to date
-    if [ "$current_branch" = "$branch_name" ]; then
-        log_info "Already on branch: $branch_name"
-        install_push_blocker
-        return 0
-    fi
-    
-    # Stash lazy-dev folder files (including lazy.sh script) BEFORE checking for other uncommitted changes
-    # Note: || true prevents set -e from exiting when nothing needs to be stashed (return 1)
-    stash_lazy_dev_files "$SCRIPT_DIR" || true
-    
-    # Check for uncommitted changes (excluding already-stashed lazy-dev folder)
-    if ! git diff-index --quiet HEAD -- 2>/dev/null; then
-        log_error "You have uncommitted changes outside the lazy-dev folder."
-        log_info "Please commit or stash them first."
-        log_info "Run: git status"
-        # Restore stashed lazy-dev files before exiting
-        pop_lazy_dev_stash
+
+    local current_branch branch_name main_branch
+    current_branch=$(git -C "$PROJECT_ROOT" branch --show-current 2>/dev/null || echo "")
+    main_branch=$(detect_main_branch || echo "")
+
+    if [ -z "$current_branch" ]; then
+        log_error "Detached HEAD state is not supported. Check out a branch first."
         exit 1
     fi
-    
-    echo ""
-    echo "╔═══════════════════════════════════════════════════════════════════════════╗"
-    echo "║                      🌿 GIT BRANCH SETUP                                  ║"
-    echo "╚═══════════════════════════════════════════════════════════════════════════╝"
-    echo ""
-    
-    # Determine main branch name (main or master)
-    local main_branch="main"
-    if ! git show-ref --verify --quiet refs/heads/main; then
-        if git show-ref --verify --quiet refs/heads/master; then
-            main_branch="master"
+
+    if [ -n "$main_branch" ] && [ "$current_branch" = "$main_branch" ]; then
+        echo ""
+        echo "You are on $main_branch. Enter a branch name for this feature."
+        if [ -t 0 ]; then
+            read -rp "Branch name: " branch_name
         else
-            log_error "Could not find 'main' or 'master' branch."
-            pop_lazy_dev_stash
+            read -rp "Branch name: " branch_name </dev/tty
+        fi
+        if ! validate_branch_name "$branch_name"; then
+            log_error "Invalid branch name: '$branch_name'"
             exit 1
         fi
-    fi
-    
-    log_info "Main branch detected: $main_branch"
-    
-    # Fetch latest from origin (if remote exists)
-    if git remote | grep -q "origin"; then
-        log_info "Fetching latest from origin..."
-        git fetch origin "$main_branch" --quiet 2>/dev/null || log_warn "Could not fetch from origin (offline?)"
-    fi
-    
-    # Switch to main branch
-    log_info "Switching to $main_branch branch..."
-    git checkout "$main_branch" --quiet
-    
-    # Pull latest changes (if remote exists)
-    if git remote | grep -q "origin"; then
-        log_info "Pulling latest changes..."
-        git pull origin "$main_branch" --quiet 2>/dev/null || log_warn "Could not pull from origin (offline?)"
-    fi
-    
-    # Check if feature branch already exists
-    if git show-ref --verify --quiet "refs/heads/$branch_name"; then
-        log_warn "Branch '$branch_name' already exists."
-        log_info "Switching to existing branch..."
-        git checkout "$branch_name" --quiet
-
-        local commits_beyond_main
-        commits_beyond_main=$(git rev-list "$main_branch"..HEAD --count 2>/dev/null || echo "0")
-
-        if [ "${FORCE_REBASE:-0}" = "1" ]; then
-            log_info "Rebasing on latest $main_branch (--rebase)..."
-            if ! git rebase "$main_branch" 2>/dev/null; then
-                log_error "Rebase onto $main_branch failed due to conflicts."
-                log_info "Resolve conflicts manually, then re-run (or use --rebase after fixing)."
-                git rebase --abort 2>/dev/null || true
-                pop_lazy_dev_stash
-                exit 1
-            fi
-            log_success "Rebased onto latest $main_branch"
-        elif [ "$commits_beyond_main" -gt 0 ]; then
-            log_info "Feature branch has $commits_beyond_main commit(s) beyond $main_branch — skipping rebase (pass --rebase to rebase onto latest $main_branch)"
+        if git -C "$PROJECT_ROOT" show-ref --verify --quiet "refs/heads/$branch_name"; then
+            log_info "Branch '$branch_name' already exists — checking out"
+            git -C "$PROJECT_ROOT" checkout "$branch_name" --quiet
         else
-            log_info "Feature branch exists with no commits beyond $main_branch"
+            log_info "Creating branch: $branch_name"
+            git -C "$PROJECT_ROOT" checkout -b "$branch_name" --quiet
         fi
+        log_success "Now on branch: $branch_name"
     else
-        # Create new feature branch from main
-        log_info "Creating new branch: $branch_name"
-        git checkout -b "$branch_name" --quiet
+        log_info "Staying on branch: $current_branch"
     fi
-    
-    log_success "Now on branch: $branch_name (based on latest $main_branch)"
-    
-    # Restore stashed lazy-dev folder files
-    pop_lazy_dev_stash
-    verify_lazy_dev_files_after_branch_setup
 
-    # Install push blocker
     install_push_blocker
-    
+
     echo ""
     echo "╔═══════════════════════════════════════════════════════════════════════════╗"
-    echo "║  ✅ Git commit: ALLOWED                                                  ║"
-    echo "║  ❌ Git push: BLOCKED (pre-push hook installed)                          ║"
+    echo "║  Runner commits locally after each story                                  ║"
+    echo "║  Git push: BLOCKED (pre-push hook installed)                              ║"
     echo "╚═══════════════════════════════════════════════════════════════════════════╝"
     echo ""
 }
 
-# Ensure Cursor discovers the generate-prd skill at .cursor/skills/generate-prd
-ensure_cursor_skills_symlink() {
-    local skill_src="$SCRIPT_DIR/skills/generate-prd"
-    local cursor_skills_dir="$PROJECT_ROOT/.cursor/skills"
-    local symlink_path="$cursor_skills_dir/generate-prd"
+# Ensure Cursor discovers lazy-dev commands at .cursor/commands/lazy-dev/
+ensure_cursor_commands_symlink() {
+    local commands_src="$SCRIPT_DIR/commands"
+    local cursor_commands_dir="$PROJECT_ROOT/.cursor/commands"
+    local symlink_path="$cursor_commands_dir/lazy-dev"
     local rel_target
 
-    if [ ! -d "$skill_src" ]; then
-        log_debug "No generate-prd skill at $skill_src — skipping skills symlink"
+    if [ ! -d "$commands_src" ]; then
+        log_debug "No commands directory at $commands_src — skipping Cursor commands symlink"
         return 0
     fi
 
-    mkdir -p "$cursor_skills_dir"
+    mkdir -p "$cursor_commands_dir"
 
     if [ -L "$symlink_path" ]; then
-        if [ -f "$symlink_path/SKILL.md" ]; then
-            log_debug "Cursor skills symlink OK: $symlink_path"
+        if [ -f "$symlink_path/generate-prd.md" ]; then
+            log_debug "Cursor command symlink OK: $symlink_path"
         else
-            log_warn "Skills symlink exists but does not resolve to generate-prd: $symlink_path"
+            log_warn "Cursor command symlink exists but does not resolve to commands: $symlink_path"
         fi
         return 0
     fi
 
     if [ -e "$symlink_path" ]; then
-        log_warn "$symlink_path exists but is not a symlink — skipping skills symlink (possible name collision)"
+        log_warn "$symlink_path exists but is not a symlink — skipping Cursor commands symlink"
         return 0
     fi
 
     if command -v python3 &> /dev/null; then
-        local skill_src_abs cursor_skills_abs
-        skill_src_abs="$(cd "$skill_src" && pwd -P)"
-        cursor_skills_abs="$(cd "$cursor_skills_dir" && pwd -P)"
-        rel_target=$(python3 -c "import os.path; print(os.path.relpath('$skill_src_abs', '$cursor_skills_abs'))")
+        local commands_src_abs cursor_commands_abs
+        commands_src_abs="$(cd "$commands_src" && pwd -P)"
+        cursor_commands_abs="$(cd "$cursor_commands_dir" && pwd -P)"
+        rel_target=$(python3 -c "import os.path; print(os.path.relpath('$commands_src_abs', '$cursor_commands_abs'))")
     else
-        rel_target="../../lazy-dev/skills/generate-prd"
+        rel_target="../lazy-dev/commands"
     fi
 
     if ln -s "$rel_target" "$symlink_path"; then
-        log_info "Created Cursor skills symlink: $symlink_path → $rel_target"
+        log_info "Created Cursor command symlink: $symlink_path → $rel_target"
     else
-        log_warn "Failed to create skills symlink: $symlink_path"
+        log_warn "Failed to create Cursor command symlink: $symlink_path"
     fi
 }
 
@@ -2176,7 +2036,7 @@ verify_setup() {
         exit 1
     fi
 
-    ensure_cursor_skills_symlink
+    ensure_cursor_commands_symlink
 
     # Create discovered directory if it doesn't exist
     mkdir -p "$DISCOVERED_DIR"
@@ -2461,9 +2321,6 @@ Review scope: run \`git diff ${merge_base}..HEAD\` to see all feature changes."
         fi
     fi
 
-    local dirty_tree_block=""
-    dirty_tree_block=$(build_dirty_tree_warning "$next_story_id")
-
     local discovered_block progress_block
     discovered_block=$(build_capped_discovered_patterns "$LAZY_DEV_DISCOVERED_PATH")
     progress_block=$(build_progress_tail "$LAZY_DEV_PROGRESS_PATH")
@@ -2478,9 +2335,9 @@ Review scope: run \`git diff ${merge_base}..HEAD\` to see all feature changes."
 - PRD: $LAZY_DEV_PRD_PATH
 - Progress: $LAZY_DEV_PROGRESS_PATH
 - Shared discovered patterns: $LAZY_DEV_DISCOVERED_PATH (capped injection below)
-- Git Branch: $CURRENT_GIT_BRANCH${dirty_tree_block}
+- Git Branch: $CURRENT_GIT_BRANCH
 
-# Git: git push is ABSOLUTELY FORBIDDEN (pre-push hook active). Stage only explicit file paths (no bulk staging). Full git policy is in the prompt below.
+# Git: Do not run git commands. The runner commits all changes after you finish.
 
 $PROMPT_CONTENT
 
@@ -2496,11 +2353,19 @@ ${progress_block}
 
 ## Your Assignment
 
-This iteration you will work EXACTLY one story: ${next_story_id} — ${next_story_title}. Its full definition (description, acceptance criteria, notes) is in the PRD. Do not start any other story.${review_scope_block}"
+This iteration you will work EXACTLY one story: ${next_story_id} — ${next_story_title}. Its full definition (description, acceptance criteria, notes) is in the PRD. Do not start any other story.
+
+When implementation is complete:
+- Update PRD (\`passes: true\` when done), \`progress.txt\`, and any \`rules/discovered/\` patterns
+- **Do not revert** source changes that implement ${next_story_id}
+- Temporary import/revert of files for browser verification applies only to component-only stories — not integration stories (e.g. wiring into App.vue is the deliverable for integration stories)
+- **Do not run git commands** — the runner will \`git add -A\` and commit after you end your response
+
+End your response when file updates are complete.${review_scope_block}"
 
     # Build cursor-agent command with appropriate flags
     # -p / --print: Run in non-interactive (headless) mode
-    # --force: Auto-approve all changes (YOLO mode always on)
+    # --auto-review: Smart Auto — server classifier auto-runs safe tool calls
     # --output-format stream-json: NDJSON for real-time event streaming
     # --stream-partial-output: Character-level streaming for real-time display
     local CURSOR_CMD
@@ -2523,16 +2388,17 @@ This iteration you will work EXACTLY one story: ${next_story_id} — ${next_stor
     # Note: --stream-partial-output removed - it causes character-by-character output
     # that makes the parsed output unreadable
     # --workspace points to project root so agent can access the full codebase
-    CURSOR_ARGS+=("-p" "--force" "--output-format" "stream-json" "--workspace" "$PROJECT_ROOT")
+    CURSOR_ARGS+=("-p" "--auto-review" "--output-format" "stream-json" "--workspace" "$PROJECT_ROOT")
 
     # Select appropriate model for the assigned story
-    # Suffix mapping: *-REVIEW → first review model; *-REVIEW-2 → second review model
+    # Suffix mapping: *-REVIEW → first review model; *-REVIEW-2 → second review model;
+    # per-story "model" field in prd.json overrides type mapping when present
     local selected_model=""
 
     if [ "${LAZY_DEV_FORCE_CLI_DEFAULT_MODEL:-0}" = "1" ]; then
         log_info "Story: ${BOLD}${next_story_id}${NC} → Model: ${BOLD}CLI default${NC} (--model omitted)"
     else
-        selected_model=$(get_model_for_story "$next_story_id")
+        selected_model=$(resolve_model_for_story "$PRD_FILE" "$next_story_id")
         if [ -n "$selected_model" ]; then
             CURSOR_ARGS+=("--model" "$selected_model")
             LAST_ITERATION_USED_EXPLICIT_MODEL=1
@@ -2571,19 +2437,13 @@ This iteration you will work EXACTLY one story: ${next_story_id} — ${next_stor
     # Parsed output is displayed to terminal
     log_debug "Starting agent with stream-json output"
     
-    # Run pipeline in a subshell
-    # NOTE: Removed set -m (job control) as it causes SIGTTOU when background
-    # processes try to write to terminal, stopping the entire pipeline
-    # Export VERBOSE so subshell's parse_agent_output can access it
+    # Run pipeline in a background subshell. Never use negative-PID group kills on
+    # PIPELINE_PID — without job control that can SIGKILL lazy.sh on macOS.
     export VERBOSE
     export LAZY_DEV_CURRENT_ITERATION="$iteration"
     export LAZY_DEV_SESSION_STATS_FILE="$SESSION_STATS_FILE"
     (
-        # Failure detection: make the subshell exit non-zero if ANY pipeline
-        # stage fails (notably the agent itself). Without pipefail the status
-        # would be parse_agent_output's (always 0), masking agent crashes.
         set -o pipefail
-        # Create new process group for cleanup
         if command -v stdbuf &> /dev/null; then
             log_debug "Using stdbuf for unbuffered output"
             stdbuf -oL -eL $CURSOR_CMD "${CURSOR_ARGS[@]}" "$CONTEXT" 2>&1 | tee "$OUTPUT_FILE" | parse_agent_output
@@ -2610,6 +2470,7 @@ This iteration you will work EXACTLY one story: ${next_story_id} — ${next_stor
     local kill_reason=""
     local last_output_size=0
     local last_output_change_time=$(date +%s)
+    local result_seen_time=0
     
     while kill -0 "$PIPELINE_PID" 2>/dev/null; do
         local elapsed=$(($(date +%s) - wait_start))
@@ -2620,7 +2481,7 @@ This iteration you will work EXACTLY one story: ${next_story_id} — ${next_stor
             break
         fi
         
-        # Stall watchdog: kill if raw output file size is unchanged for STALL_TIMEOUT
+        # Stall watchdog: kill if raw output file size is unchanged for effective_stall_timeout
         local current_output_size=0
         if [ -f "$OUTPUT_FILE" ]; then
             current_output_size=$(wc -c < "$OUTPUT_FILE" | tr -d ' ')
@@ -2628,12 +2489,29 @@ This iteration you will work EXACTLY one story: ${next_story_id} — ${next_stor
         if [ "$current_output_size" != "$last_output_size" ]; then
             last_output_size=$current_output_size
             last_output_change_time=$(date +%s)
+            if output_file_has_result_event "$OUTPUT_FILE"; then
+                if [ "$result_seen_time" -eq 0 ]; then
+                    result_seen_time=$(date +%s)
+                fi
+            fi
         else
             local stall_elapsed=$(($(date +%s) - last_output_change_time))
+
+            # Result received but pipeline still alive — cursor-cli tail hang
+            if [ "$result_seen_time" -gt 0 ]; then
+                local result_tail_elapsed=$(($(date +%s) - result_seen_time))
+                if [ "$result_tail_elapsed" -ge "$RESULT_TAIL_HANG_TIMEOUT" ]; then
+                    log_warn "Result event received but pipeline still alive (${result_tail_elapsed}s) - killing process"
+                    timed_out=1
+                    kill_reason="result_tail_hang"
+                    break
+                fi
+            fi
+
             if [ "$stall_elapsed" -ge "$STALL_TIMEOUT" ]; then
                 log_warn "Stall detected (no output for ${stall_elapsed}s) - killing process"
-                timed_out=1
                 kill_reason="stall"
+                timed_out=1
                 break
             fi
         fi
@@ -2643,12 +2521,8 @@ This iteration you will work EXACTLY one story: ${next_story_id} — ${next_stor
     done
     
     if [ "$timed_out" -eq 1 ]; then
-        # Kill the process group (negative PID kills the group)
-        kill -TERM -"$PIPELINE_PID" 2>/dev/null || kill -TERM "$PIPELINE_PID" 2>/dev/null || true
-        pkill -TERM -P "$PIPELINE_PID" 2>/dev/null || true
-        sleep 1
-        kill -9 -"$PIPELINE_PID" 2>/dev/null || kill -9 "$PIPELINE_PID" 2>/dev/null || true
-        pkill -9 -P "$PIPELINE_PID" 2>/dev/null || true
+        log_warn "Stall recovery: killed hung agent (reason: ${kill_reason:-timeout}) — continuing loop"
+        kill_pipeline_safely "$PIPELINE_PID" "${kill_reason:-timeout}"
     fi
     
     if [ "$timed_out" -eq 0 ]; then
@@ -2704,12 +2578,7 @@ handle_interrupt() {
     
     # Kill pipeline immediately (don't wait for cleanup)
     if [ -n "$PIPELINE_PID" ] && kill -0 "$PIPELINE_PID" 2>/dev/null; then
-        # Kill the entire process group
-        kill -TERM -"$PIPELINE_PID" 2>/dev/null || kill -TERM "$PIPELINE_PID" 2>/dev/null || true
-        pkill -TERM -P "$PIPELINE_PID" 2>/dev/null || true
-        sleep 0.3
-        kill -9 -"$PIPELINE_PID" 2>/dev/null || kill -9 "$PIPELINE_PID" 2>/dev/null || true
-        pkill -9 -P "$PIPELINE_PID" 2>/dev/null || true
+        kill_pipeline_safely "$PIPELINE_PID" "interrupt"
     fi
     PIPELINE_PID=""
     
@@ -2758,8 +2627,9 @@ main() {
         log_process_count
     fi
     
-    # CRITICAL: Setup git branch from latest main and block pushes
-    setup_feature_branch "$FEATURE_NAME"
+    # CRITICAL: Require clean tree, then set up branch and block pushes
+    assert_clean_working_tree
+    ensure_feature_branch
     
     archive_previous_run
     track_branch
@@ -2801,6 +2671,9 @@ main() {
             exit 0
         fi
         
+        # Require a clean tree before each story (previous story must be committed)
+        assert_clean_working_tree
+
         # Capture assigned story state before iteration (for quality-gate flip detection)
         local assigned_passes_before assigned_before_id gate_recorded_attempt=0
         assigned_before_id=$(get_next_story_id "$PRD_FILE")
@@ -2849,13 +2722,28 @@ main() {
         
         if [ $iteration_success -eq 0 ]; then
             log_error "Iteration $iteration failed after $retry_count attempt(s)"
-            # Continue to next iteration anyway - the story might still be incomplete
+            if working_tree_is_dirty; then
+                log_error "Agent left uncommitted changes — stopping session"
+                git -C "$PROJECT_ROOT" status --short
+                exit 1
+            fi
+        fi
+
+        # Runner-owned commit: story is done only when commit succeeds
+        if working_tree_is_dirty; then
+            if ! commit_iteration_changes "$LAST_ASSIGNED_STORY_ID"; then
+                fatal_iteration_commit_failure "$LAST_ASSIGNED_STORY_ID" "$assigned_passes_before"
+            fi
         fi
 
         # Runner quality gate when the assigned story flipped to passes:true this iteration
         if [ -n "${LAST_ASSIGNED_STORY_ID:-}" ]; then
             if ! handle_quality_gate_for_flip "$LAST_ASSIGNED_STORY_ID" "$assigned_passes_before"; then
                 gate_recorded_attempt=1
+                if working_tree_is_dirty; then
+                    commit_iteration_changes "$LAST_ASSIGNED_STORY_ID" \
+                        || fatal_iteration_commit_failure "$LAST_ASSIGNED_STORY_ID" "$assigned_passes_before"
+                fi
             fi
         fi
         
@@ -2873,8 +2761,6 @@ main() {
                 record_story_attempt "$LAST_ASSIGNED_STORY_ID" "$PRD_FILE"
             fi
         fi
-
-        commit_state
 
         # Check completion after iteration
         if verify_all_stories_complete "$PRD_FILE"; then

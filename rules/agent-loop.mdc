@@ -1,6 +1,6 @@
 ---
 description: "Agent loop protocol - iteration behavior, handoffs, state management"
-alwaysApply: false
+alwaysApply: true
 ---
 
 # Agent Loop Protocol
@@ -9,13 +9,11 @@ You are operating in an autonomous agent loop. Each iteration is independent - y
 
 ## Iteration Lifecycle
 
-0. **Reconcile** - Check `git status` and `git log -3`. If the tree is dirty or the last commit looks half-finished, reconcile with `progress.txt` before planning — finish, complete, or note-and-continue. Never silently revert work you did not do.
 1. **Bootstrap** - Load PRD, progress log, discovered patterns, and rules
 2. **Select** - Pick highest priority incomplete story
 3. **Plan** - Break story into sub-tasks before coding
 4. **Execute** - Implement sub-tasks with verification
-5. **Commit** - Save changes with clear commit message
-6. **Handoff** - Update state files for next iteration
+5. **Handoff** - Update state files; runner commits after you end your response
 
 ## State Files
 
@@ -76,9 +74,9 @@ You are an **autonomous agent** — never ask the user for clarification, data, 
 
 See **Commit Message Conventions** in the main prompt for the canonical commit-type table (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`) and Jira/story-id format.
 
-## Lazy-Dev State Commits (Runner-Owned)
+## Iteration Commit
 
-The loop runner commits lazy-dev state files automatically after each iteration. **Never commit anything under the lazy-dev directory.** Only commit your source-code changes.
+**Do not run git commands.** Update all files you changed (source code, review outputs, lazy-dev state). The runner commits everything with `git add -A` after each iteration. A story is done when the runner's commit succeeds.
 
 ## Scope Discipline
 

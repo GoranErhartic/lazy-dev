@@ -127,6 +127,6 @@ Each feature gets its own subfolder with isolated state.
 ## How It Works
 
 The agent loop runs continuously until all user stories in the PRD have `passes: true`. The implementation uses:
-- Headless mode with auto-approve (YOLO mode)
+- Headless mode with `--auto-review` (Smart Auto approval)
 - Automatic task breakdown and verification
 - Progress tracking through state files
