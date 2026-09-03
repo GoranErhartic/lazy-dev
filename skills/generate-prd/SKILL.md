@@ -209,7 +209,7 @@ While the output format is `prd.json`, mentally structure the feature as:
 **When no Jira task is provided:**
 - Use `US-001`, `US-002`, etc. for sequential numbering
 
-**Important:** Story IDs are for internal PRD tracking only. Git commits should use the Jira task ID (e.g., `feat(MED-523): Add priority field`), NOT the granular story IDs, since PRD files are not committed to VCS.
+**Important:** Story IDs are for internal PRD tracking only. Implementation commits should use the Jira task ID (e.g., `feat: (MED-523) Add priority field`), NOT granular story IDs like `MED-523-001`. The PRD is committed once at creation as the branch's first commit (see Phase 4).
 
 Stories should be independent enough to be worked on in separate agent iterations.
 
@@ -267,38 +267,45 @@ The loop runs until all stories have `passes: true`, bounded by `--max-iteration
 ## PHASE 4: Create PRD File
 
 1. **Determine Feature Location and Jira Task:**
-   * Ask the user for the feature name/identifier (for branch naming and folder).
+   * Ask the user for the feature name/identifier (for folder naming and branch suggestions).
    * **Check if user mentioned a Jira task number** (e.g., MED-123, PROJ-456) in their initial request or during clarification.
    * If Jira task was mentioned, capture it for branch naming and commit messages.
-   
-   **Branch name format:**
-   - **Without Jira:** `feature/<feature-name>` or `fix/<feature-name>` (kebab-case)
-   - **With Jira:** `feature/<JIRA-ID>_<feature-name>` or `fix/<JIRA-ID>_<feature-name>`
-   
-   **Examples:**
+
+2. **Git Branch Setup (before writing any files):**
+   * **Require a clean working tree.** If `git status --porcelain` is not empty, stop and ask the user to commit or stash changes first.
+   * **Prerequisite:** The user must have run `lazydev` once so project state exists under `~/.lazy-dev/<project>/`.
+   * **State directory:** Use the path from the user message (`Lazy-dev state directory for this project: ...`). If absent, resolve as `~/.lazy-dev/<repo-basename>/features/` (same slug rules as `lazy.sh`: lowercase repo folder name; append `-<8-char-hash>` if `.project-root` points elsewhere).
+   * Detect the current branch: `git branch --show-current`
+   * Detect main branch name (`main` or `master`).
+
+   **If on `main` or `master`:**
+   * **Ask the user for the branch name** (do not assume). Suggest a default they can accept or edit:
+     - Without Jira: `feature/<feature-name>` or `fix/<feature-name>` (kebab-case)
+     - With Jira: `feature/<JIRA-ID>_<feature-name>` or `fix/<JIRA-ID>_<feature-name>`
+   * Validate the name with `git check-ref-format --branch "<name>"`.
+   * Create and check out the branch:
+     ```bash
+     # If branch does not exist yet:
+     git checkout -b <branch-name>
+     # If branch already exists:
+     git checkout <branch-name>
+     ```
+   * Record this name as `branchName` in `prd.json`.
+
+   **If already on a feature branch (not main/master):**
+   * **Stay on the current branch** — do not ask for a new branch name.
+   * Record the current branch as `branchName` in `prd.json`.
+
+   **Examples of suggested branch names (on main only):**
    - Without Jira: `feature/task-priority`
    - With Jira MED-123: `feature/MED-123_task-priority`
    - Bug fix with Jira: `fix/MED-456_login-validation`
 
-2. **Create Feature Branch:**
-   * **CRITICAL: Create the git branch BEFORE starting any work**
-   * First, ensure you're on the latest main/master branch:
-     ```bash
-     git checkout main && git pull origin main
-     ```
-   * Then create and switch to the feature branch:
-     ```bash
-     git checkout -b feature/<feature-name>
-     # Or with Jira: git checkout -b feature/<JIRA-ID>_<feature-name>
-     ```
-   * This ensures all work is isolated on a dedicated branch.
-
 3. **Create Feature Directory:**
-   * Create folder: `<lazy-dev>/features/<feature-name>/` (substitute the actual lazy-dev install path for this project)
+   * Create folder: `<state-dir>/features/<feature-name>/` (where `<state-dir>` is the lazy-dev state directory for this project, typically `~/.lazy-dev/<repo-name>/`)
    * This folder will contain:
      - `prd.json` - The PRD file
      - `progress.txt` - Will be created during implementation
-     - `discovered/` - Will store feature-specific patterns (optional)
 
 4. **Generate `prd.json`:**
    * Use the following schema:
@@ -355,7 +362,7 @@ The loop runs until all stories have `passes: true`, bounded by `--max-iteration
         "priority": 997,
         "passes": false,
         "attempts": 0,
-        "notes": "Auto-generated first review step. Output findings to <lazy-dev>/features/<feature>/review-gpt.md (substitute actual feature name and lazy-dev path)"
+        "notes": "Auto-generated first review step. Output findings to <state-dir>/features/<feature>/review-gpt.md"
       },
       {
         "id": "[JIRA-123-REVIEW-2 or US-REVIEW-2 if no Jira]",
@@ -372,7 +379,7 @@ The loop runs until all stories have `passes: true`, bounded by `--max-iteration
         "priority": 998,
         "passes": false,
         "attempts": 0,
-        "notes": "Auto-generated second review step. Output findings to <lazy-dev>/features/<feature>/review-gemini.md (substitute actual feature name and lazy-dev path)"
+        "notes": "Auto-generated second review step. Output findings to <state-dir>/features/<feature>/review-gemini.md"
       },
       {
         "id": "[JIRA-123-IMPL-RECS or US-IMPLEMENT-RECS if no Jira]",
@@ -423,6 +430,13 @@ The loop runs until all stories have `passes: true`, bounded by `--max-iteration
    Do not modify previous entries.
    -->
    ```
+
+6. **Verify files (no repo commit for PRD state):**
+   * PRD files live under `~/.lazy-dev/<project>/` — **outside the git repository**. Do not `git add` or commit `prd.json` / `progress.txt`.
+   * Confirm both files exist and `prd.json` validates.
+   * The consumer repo working tree should remain unchanged by PRD creation (branch checkout is the only git change).
+
+   When the user later runs `lazy.sh <feature-name>`, the runner expects a clean tree and will stay on this branch (no second branch prompt).
 
 ---
 
@@ -760,7 +774,7 @@ Does this accurately capture what you want? If yes, I'll proceed with generating
 }
 ```
 
-**Note on Git commits:** When committing, use the Jira task ID only (e.g., `feat(TASK-456): Add priority field`), NOT the granular story IDs. The PRD with story IDs stays local and is not committed to VCS.
+**Note on Git commits:** The PRD skill creates the branch and commits `prd.json` + `progress.txt` as the first commit. During `./lazy.sh` implementation, the runner commits each story — use the Jira task ID in those messages (e.g., `feat: (TASK-456) Add priority field`), not granular story IDs like `TASK-456-001`.
 
 ---
 
@@ -803,12 +817,16 @@ Before finalizing the PRD, verify:
 - [ ] `prd.json` is valid JSON
 - [ ] `progress.txt` template created
 
-**Git Branch:**
-- [ ] Feature branch created: `git checkout -b feature/<feature-name>` (or with Jira: `feature/<JIRA-ID>_<feature-name>`)
+**Git Branch & Initial Commit:**
+- [ ] Working tree was clean before branch setup
+- [ ] On main/master: user was asked for branch name; branch created/checked out
+- [ ] On feature branch: stayed on current branch; `branchName` in PRD matches
+- [ ] `prd.json` and `progress.txt` committed as first commit on the branch
+- [ ] Initial commit message follows `chore: add PRD for <feature>` (or `chore: (<JIRA-ID>) add PRD for <feature>`)
 
-**Git Commits (reminder for agent):**
-- [ ] Commits use Jira task ID only: `feat(JIRA-123): Description`
-- [ ] Commits do NOT use granular story IDs (JIRA-123-001) - PRD stays local, not in VCS
+**Git Commits (reminder for lazy.sh loop):**
+- [ ] Implementation commits use Jira task ID only: `feat: (JIRA-123) Description`
+- [ ] Implementation commits do NOT use granular story IDs (JIRA-123-001)
 
 ---
 

@@ -3,6 +3,7 @@
 #
 # Usage: lazydev
 #
+# Requires lazy-dev to be installed globally via install.sh (~/.lazy-dev).
 # Presents a menu loop:
 #   1) Create new feature PRD (interactive generate-prd skill)
 #   2) Implement a prepared feature (lazy.sh agent loop)
@@ -10,17 +11,24 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LAZY_SH="$SCRIPT_DIR/lazy.sh"
-FEATURES_DIR="$SCRIPT_DIR/features"
+LAZY_DEV_HOME="${LAZY_DEV_HOME:-$HOME/.lazy-dev}"
+LAZY_SH="${LAZY_DEV_HOME}/lazy.sh"
 
-# PROJECT_ROOT is the git workspace root (supports lazy-dev at any install path)
+# PROJECT_ROOT is the git workspace root
 if _git_root=$(git rev-parse --show-toplevel 2>/dev/null); then
     PROJECT_ROOT="$(cd "$_git_root" && pwd -P)"
 else
-    PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+    PROJECT_ROOT="$(pwd -P)"
 fi
 unset _git_root
+
+STATE_DIR=""
+FEATURES_DIR=""
+
+resolve_state_dir() {
+    STATE_DIR=$("$LAZY_SH" --bootstrap-project --print-state-dir) || return 1
+    FEATURES_DIR="$STATE_DIR/features"
+}
 
 # Colors
 RED='\033[0;31m'
@@ -34,7 +42,6 @@ log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# Cursor agent command: prefer standalone cursor-agent, fall back to "cursor agent"
 CURSOR_CMD=""
 CURSOR_ARGS=()
 
@@ -52,49 +59,6 @@ resolve_cursor_cmd() {
     fi
 }
 
-# Ensure Cursor discovers the generate-prd skill at .cursor/skills/generate-prd
-ensure_cursor_skills_symlink() {
-    local skill_src="$SCRIPT_DIR/skills/generate-prd"
-    local cursor_skills_dir="$PROJECT_ROOT/.cursor/skills"
-    local symlink_path="$cursor_skills_dir/generate-prd"
-    local rel_target
-
-    if [ ! -d "$skill_src" ]; then
-        log_warn "Skill directory not found at $skill_src — skipping skills symlink"
-        return 0
-    fi
-
-    mkdir -p "$cursor_skills_dir"
-
-    if [ -L "$symlink_path" ]; then
-        if [ -f "$symlink_path/SKILL.md" ]; then
-            return 0
-        fi
-        log_warn "Skills symlink exists but does not resolve to generate-prd skill: $symlink_path"
-        return 0
-    fi
-
-    if [ -e "$symlink_path" ]; then
-        log_warn "$symlink_path exists but is not a symlink — skipping skills symlink (possible name collision)"
-        return 0
-    fi
-
-    if command -v python3 &> /dev/null; then
-        local skill_src_abs cursor_skills_abs
-        skill_src_abs="$(cd "$skill_src" && pwd -P)"
-        cursor_skills_abs="$(cd "$cursor_skills_dir" && pwd -P)"
-        rel_target=$(python3 -c "import os.path; print(os.path.relpath('$skill_src_abs', '$cursor_skills_abs'))")
-    else
-        rel_target="../../lazy-dev/skills/generate-prd"
-    fi
-
-    if ln -s "$rel_target" "$symlink_path"; then
-        log_info "Linked skill: $symlink_path → $rel_target"
-    else
-        log_warn "Failed to create skills symlink: $symlink_path"
-    fi
-}
-
 check_auth() {
     if ! "$CURSOR_CMD" "${CURSOR_ARGS[@]}" status &> /dev/null; then
         log_error "Not authenticated with Cursor CLI."
@@ -107,7 +71,9 @@ preflight() {
     resolve_cursor_cmd
 
     if [ ! -x "$LAZY_SH" ]; then
-        log_error "lazy.sh not found or not executable: $LAZY_SH"
+        log_error "lazy-dev not installed at $LAZY_DEV_HOME"
+        log_info "Run install.sh from the lazy-dev repository:"
+        log_info "  ./install.sh"
         exit 1
     fi
 
@@ -116,9 +82,8 @@ preflight() {
         exit 1
     fi
 
-    ensure_cursor_skills_symlink
+    resolve_state_dir || exit 1
     check_auth
-    mkdir -p "$FEATURES_DIR"
 }
 
 print_menu() {
@@ -131,7 +96,6 @@ print_menu() {
     echo ""
 }
 
-# Trap Ctrl+C during menu reads only
 menu_interrupt() {
     echo ""
     log_info "Returning to menu…"
@@ -155,13 +119,15 @@ run_create_prd() {
     fi
 
     log_info "Starting interactive PRD session (exit the agent to return to the menu)…"
+    log_info "Lazy-dev state directory: $STATE_DIR"
     echo ""
 
-    # Interactive session — no -p/--force; user approves writes and answers questions
     "$CURSOR_CMD" "${CURSOR_ARGS[@]}" \
         --workspace "$PROJECT_ROOT" \
         --trust \
-        "$prompt"
+        "${prompt}
+
+Lazy-dev state directory for this project: ${STATE_DIR}"
 
     local exit_code=$?
     echo ""
@@ -172,7 +138,6 @@ run_create_prd() {
     fi
 }
 
-# List feature names that have a prd.json (newline-separated)
 list_feature_names() {
     local feature_dir prd_file
     for prd_file in "$FEATURES_DIR"/*/prd.json; do
@@ -190,107 +155,9 @@ feature_progress() {
     echo "${done_count}/${total}"
 }
 
-# ── Model configuration (persisted in lazy.sh) ──────────────────────────────
-
-models_are_configured() {
-    grep -q '^LAZY_DEV_MODELS_CONFIGURED=1$' "$LAZY_SH" 2>/dev/null
-}
-
-# Populate global MODEL_IDS and MODEL_LABELS from cursor-agent --list-models
-list_available_models() {
-    local line id label
-    MODEL_IDS=()
-    MODEL_LABELS=()
-
-    while IFS= read -r line; do
-        [ -z "$line" ] && continue
-        [ "$line" = "Available models" ] && continue
-        id="${line%% - *}"
-        [ "$id" = "$line" ] && continue
-        [ "$id" = "auto" ] && continue
-        label="${line#* - }"
-        MODEL_IDS+=("$id")
-        MODEL_LABELS+=("$label")
-    done < <("$CURSOR_CMD" "${CURSOR_ARGS[@]}" --list-models 2>/dev/null)
-
-    [ "${#MODEL_IDS[@]}" -gt 0 ]
-}
-
-prompt_model_choice() {
-    local category="$1"
-    local choice="" idx i
-
-    if ! list_available_models; then
-        log_error "Could not list available models from Cursor CLI."
-        return 1
-    fi
-
-    while true; do
-        # UI goes to stderr so ensure_models_configured can capture the chosen model via $(...)
-        echo "" >&2
-        echo "Select ${category} model:" >&2
-        for i in "${!MODEL_IDS[@]}"; do
-            printf '  %d) %s - %s\n' "$((i + 1))" "${MODEL_IDS[$i]}" "${MODEL_LABELS[$i]}" >&2
-        done
-        echo "" >&2
-        read -r -p "> " choice || true
-
-        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#MODEL_IDS[@]}" ]; then
-            echo "${MODEL_IDS[$((choice - 1))]}"
-            return 0
-        fi
-
-        echo -e "${YELLOW}[WARN]${NC} Invalid selection. Enter a number between 1 and ${#MODEL_IDS[@]}." >&2
-    done
-}
-
-save_models_to_lazy_sh() {
-    local impl="$1" review="$2" review2="$3"
-    local tmp
-
-    if [ ! -f "$LAZY_SH" ]; then
-        log_error "lazy.sh not found: $LAZY_SH"
-        return 1
-    fi
-
-    tmp=$(mktemp)
-    sed \
-        -e 's/^LAZY_DEV_MODELS_CONFIGURED=.*/LAZY_DEV_MODELS_CONFIGURED=1/' \
-        -e "s|^LAZY_DEV_MODEL_IMPL=.*|LAZY_DEV_MODEL_IMPL=\"\${LAZY_DEV_MODEL_IMPL:-${impl}}\"|" \
-        -e "s|^LAZY_DEV_MODEL_REVIEW=.*|LAZY_DEV_MODEL_REVIEW=\"\${LAZY_DEV_MODEL_REVIEW:-${review}}\"|" \
-        -e "s|^LAZY_DEV_MODEL_REVIEW2=.*|LAZY_DEV_MODEL_REVIEW2=\"\${LAZY_DEV_MODEL_REVIEW2:-${review2}}\"|" \
-        "$LAZY_SH" > "$tmp" && mv "$tmp" "$LAZY_SH"
-    chmod +x "$LAZY_SH"
-
-    log_success "Model configuration saved to lazy.sh"
-}
-
-ensure_models_configured() {
-    local impl review review2
-
-    if models_are_configured; then
-        return 0
-    fi
-
-    echo ""
-    log_info "First-time setup: select models for each story category."
-    log_info "Press Ctrl+C to cancel and return to the menu."
-
-    impl=$(prompt_model_choice "implementation") || return 1
-    review=$(prompt_model_choice "first code review") || return 1
-    review2=$(prompt_model_choice "second code review") || return 1
-
-    save_models_to_lazy_sh "$impl" "$review" "$review2"
-    echo ""
-    log_info "Implementation: ${impl}"
-    log_info "First review:   ${review}"
-    log_info "Second review:  ${review2}"
-    echo ""
-}
-
 run_implement() {
     local -a features=()
-    local feature_dir prd_file name description progress choice idx
+    local prd_file name description progress choice idx
 
     while IFS= read -r name; do
         [ -n "$name" ] && features+=("$name")
@@ -334,8 +201,6 @@ run_implement() {
     log_info "Starting implementation for feature: $name"
     echo ""
 
-    ensure_models_configured || return 0
-
     "$LAZY_SH" "$name"
     local exit_code=$?
 
@@ -361,21 +226,11 @@ main() {
         choice=$(read_menu_choice)
 
         case "$choice" in
-            1)
-                run_create_prd
-                ;;
-            2)
-                run_implement
-                ;;
-            q|Q)
-                echo "Goodbye."
-                exit 0
-                ;;
-            "")
-                ;;
-            *)
-                log_warn "Invalid choice. Enter 1, 2, or q."
-                ;;
+            1) run_create_prd ;;
+            2) run_implement ;;
+            q|Q) echo "Goodbye."; exit 0 ;;
+            "") ;;
+            *) log_warn "Invalid choice. Enter 1, 2, or q." ;;
         esac
     done
 }

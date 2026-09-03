@@ -24,6 +24,8 @@ print_usage() {
     echo "Options:"
     echo "  --verbose, -v          Enable verbose/debug output"
     echo "  --max-iterations N     Set maximum iterations (default: 20)"
+    echo "  --bootstrap-project    Initialize ~/.lazy-dev/<project>/ state and exit"
+    echo "  --print-state-dir      With --bootstrap-project, print the state directory path"
     echo "  --help, -h             Show this help message"
     echo ""
     echo "Runs continuously until ALL user stories in PRD have passes: true."
@@ -50,13 +52,11 @@ print_usage() {
     echo "  LAZY_DEV_MAX_COST=<usd>      Stop when cumulative session cost exceeds this (decimal USD)"
     echo "  LAZY_DEV_MAX_MINUTES=<n>     Stop when cumulative session duration exceeds this (minutes)"
     echo ""
-    echo "Troubleshooting:"
-    echo "  Stale feature lock after a crash: rm -rf features/<feature>/.lazy-dev.lock"
+    echo "Install lazy-dev globally (once per machine):"
+    echo "  ./install.sh"
     echo ""
     echo "To create a new feature:"
-    echo "  mkdir -p features/<feature-name>"
-    echo "  cp examples/prd.json features/<feature-name>/"
-    echo "  cp examples/progress.txt features/<feature-name>/"
+    echo "  lazydev   # option 1: Create new feature PRD"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -71,6 +71,8 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
 # Parse flags
 VERBOSE=""
 SHOW_HELP=0
+LAZY_DEV_BOOTSTRAP_ONLY=0
+LAZY_DEV_PRINT_STATE_DIR=0
 while [[ "$1" == -* ]]; do
         case "$1" in
         --verbose|-v)
@@ -80,6 +82,14 @@ while [[ "$1" == -* ]]; do
         --max-iterations)
             shift
             MAX_ITERATIONS="$1"
+            shift
+            ;;
+        --bootstrap-project)
+            LAZY_DEV_BOOTSTRAP_ONLY=1
+            shift
+            ;;
+        --print-state-dir)
+            LAZY_DEV_PRINT_STATE_DIR=1
             shift
             ;;
         --help|-h)
@@ -105,7 +115,7 @@ if [ "$SHOW_HELP" = "1" ]; then
 fi
 
 # Validate arguments
-if [ -z "$1" ]; then
+if [ "${LAZY_DEV_BOOTSTRAP_ONLY:-0}" != "1" ] && [ -z "$1" ]; then
     print_usage
     exit 1
 fi
@@ -113,34 +123,33 @@ fi
 fi  # ── end CLI entry point (direct execution only) ──
 
 # Configuration
-# Strip "features/" prefix if provided (allows both "features/my-feature" and "my-feature")
-FEATURE_NAME="${1#features/}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# PROJECT_ROOT is the git workspace root (supports lazy-dev at any install path)
+LAZY_DEV_HOME="${LAZY_DEV_HOME:-$HOME/.lazy-dev}"
+SCRIPT_DIR="$LAZY_DEV_HOME"
+CONFIG_FILE="$LAZY_DEV_HOME/config.env"
+PROJECT_SLUG=""
+STATE_DIR=""
+
+FEATURE_NAME=""
+if [[ "${LAZY_DEV_BOOTSTRAP_ONLY:-0}" != "1" ]] && [ -n "${1:-}" ]; then
+    FEATURE_NAME="${1#features/}"
+fi
+
+# PROJECT_ROOT is the git workspace root
 if _git_root=$(git rev-parse --show-toplevel 2>/dev/null); then
     PROJECT_ROOT="$(cd "$_git_root" && pwd -P)"
 else
-    PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
+    PROJECT_ROOT="$(pwd -P)"
 fi
 unset _git_root
-# LAZY_DEV_REL: SCRIPT_DIR relative to PROJECT_ROOT (e.g. .cursor/lazy-dev; "." if equal)
-_lazy_dev_abs="$(cd "$SCRIPT_DIR" && pwd -P)"
-_root_abs="$(cd "$PROJECT_ROOT" && pwd -P)"
-if [ "$_lazy_dev_abs" = "$_root_abs" ]; then
-    LAZY_DEV_REL="."
-else
-    LAZY_DEV_REL="${_lazy_dev_abs#${_root_abs}/}"
-fi
-unset _lazy_dev_abs _root_abs
-FEATURE_DIR="$SCRIPT_DIR/features/$FEATURE_NAME"
-PRD_FILE="$FEATURE_DIR/prd.json"
-PROGRESS_FILE="$FEATURE_DIR/progress.txt"
+
+FEATURE_DIR=""
+PRD_FILE=""
+PROGRESS_FILE=""
 PROMPT_FILE="$SCRIPT_DIR/prompt.md"
-ARCHIVE_DIR="$FEATURE_DIR/archive"
-LAST_BRANCH_FILE="$FEATURE_DIR/.last-branch"
-SESSION_STATS_FILE="$FEATURE_DIR/.session-stats"
-# Shared discovered patterns directory (cross-feature learning)
-DISCOVERED_DIR="$SCRIPT_DIR/rules/discovered"
+ARCHIVE_DIR=""
+LAST_BRANCH_FILE=""
+SESSION_STATS_FILE=""
+DISCOVERED_DIR=""
 
 # Will be set by verify_setup: 1 when standalone cursor-agent binary is available
 USE_STANDALONE_CURSOR_AGENT=0
@@ -168,10 +177,6 @@ LAST_ASSIGNED_STORY_ID=""
 CURRENT_ITERATION=0
 ITERATION_START_EPOCH=0
 LAZY_DEV_ITERATION_ACTIVE=0
-
-# Per-feature concurrency lock (CHUNK-017): flock fd or mkdir lock directory
-LAZY_DEV_FEATURE_LOCK_FD=""
-LAZY_DEV_FEATURE_LOCK_DIR=""
 
 # Timeout for each iteration in seconds (30 minutes default)
 # Override with LAZY_DEV_TIMEOUT environment variable
@@ -213,9 +218,16 @@ LAZY_DEV_FAKE_AGENT="${LAZY_DEV_FAKE_AGENT:-}"
 
 # Per-type model overrides (consumed by get_model_for_story; per-story .model
 # field in prd.json still wins via resolve_model_for_story)
+LAZY_DEV_MODELS_CONFIGURED=0
 LAZY_DEV_MODEL_IMPL="${LAZY_DEV_MODEL_IMPL:-opus-4.6}"
 LAZY_DEV_MODEL_REVIEW="${LAZY_DEV_MODEL_REVIEW:-gpt-5.3-codex}"
 LAZY_DEV_MODEL_REVIEW2="${LAZY_DEV_MODEL_REVIEW2:-gemini-3-pro}"
+
+# Load persisted model config from ~/.lazy-dev/config.env
+if [ -f "$CONFIG_FILE" ]; then
+    # shellcheck source=/dev/null
+    source "$CONFIG_FILE"
+fi
 
 # Per-gate build/test timeout (seconds); consumed by run_quality_gate
 LAZY_DEV_GATE_TIMEOUT="${LAZY_DEV_GATE_TIMEOUT:-600}"
@@ -261,6 +273,42 @@ log_debug() {
     if [ "$VERBOSE" = "1" ]; then
         echo -e "${BLUE}[DEBUG]${NC} $1"
     fi
+}
+
+# Filesystem-safe project name from repo root (basename, lowercased).
+project_slug_from_root() {
+    local root="$1"
+    basename "$root" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g'
+}
+
+# Per-project state lives under ~/.lazy-dev/<project>/ (never in the consumer repo).
+resolve_project_state_dir() {
+    local slug existing_root marker
+
+    slug=$(project_slug_from_root "$PROJECT_ROOT")
+    [ -n "$slug" ] || slug="project"
+
+    marker="$LAZY_DEV_HOME/$slug/.project-root"
+    if [ -f "$marker" ]; then
+        existing_root=$(tr -d '\n' < "$marker")
+        if [ "$existing_root" != "$PROJECT_ROOT" ]; then
+            slug="${slug}-$(printf '%s' "$PROJECT_ROOT" | shasum -a 256 2>/dev/null | cut -c1-8)"
+        fi
+    fi
+
+    PROJECT_SLUG="$slug"
+    STATE_DIR="$LAZY_DEV_HOME/$PROJECT_SLUG"
+}
+
+# Bind feature-scoped paths after STATE_DIR and FEATURE_NAME are known.
+set_feature_paths() {
+    FEATURE_DIR="$STATE_DIR/features/$FEATURE_NAME"
+    PRD_FILE="$FEATURE_DIR/prd.json"
+    PROGRESS_FILE="$FEATURE_DIR/progress.txt"
+    ARCHIVE_DIR="$FEATURE_DIR/archive"
+    LAST_BRANCH_FILE="$FEATURE_DIR/.last-branch"
+    SESSION_STATS_FILE="$FEATURE_DIR/.session-stats"
+    DISCOVERED_DIR="$STATE_DIR/rules/discovered"
 }
 
 # Additional colors for agent output
@@ -441,10 +489,11 @@ parse_agent_output() {
                 :
                 ;;
             "thinking")
-                # Thinking events - stream thinking text like chat for real-time feel
-                local thinking_text
-                thinking_text=$(safe_jq '.text // ""' "$line")
-                
+                # Thinking events - stream text chunks; lifecycle subtypes (started/completed) have no text
+                local thinking_subtype thinking_text
+                thinking_subtype=$(safe_jq '.subtype // ""' "$line")
+                thinking_text=$(safe_jq '.text // .delta.text // ""' "$line")
+
                 if [ -n "$thinking_text" ]; then
                     # Show thinking header on first thinking chunk (only stop spinner once)
                     if [ "$thinking_started" != "1" ]; then
@@ -454,10 +503,17 @@ parse_agent_output() {
                         printf "${MAGENTA}💭 Thinking...${NC}\r\n"
                         printf "${DIM}"
                     fi
-                    
+
                     # Normalize newlines: ensure \n is preceded by \r to reset cursor to column 0
                     thinking_text="${thinking_text//$'\n'/$'\r\n'}"
                     printf '%s' "$thinking_text"
+                elif [ "$thinking_subtype" = "completed" ]; then
+                    if [ "$thinking_started" = "1" ]; then
+                        printf "${NC}\r\n\r\n"
+                        thinking_started=0
+                    fi
+                elif [ "$thinking_subtype" = "started" ]; then
+                    :
                 else
                     warn_event_shape "thinking:empty" "$line"
                 fi
@@ -764,9 +820,6 @@ cleanup() {
         rm -f "$SPINNER_PID_FILE" 2>/dev/null
     fi
     SPINNER_PID_FILE=""
-    
-    # Release per-feature concurrency lock
-    release_feature_lock
 
     # Remove push blocker hook and session lock file
     remove_push_blocker
@@ -1446,30 +1499,24 @@ report_budget_exceeded_and_exit() {
     exit 2
 }
 
-# Filter lazy-dev infrastructure noise from git status --porcelain lines.
+# Filter lazy-dev ephemeral paths from git status --porcelain lines (diagnostics only).
 filter_infra_porcelain() {
     local line path
-    local lazy_sh_path="${LAZY_DEV_REL}/lazy.sh"
-    local lazydev_path="${LAZY_DEV_REL}/lazydev"
 
     while IFS= read -r line; do
         [ -z "$line" ] && continue
         path="${line:3}"
         case "$path" in
-            .cursor|.cursor/*|*/.last-branch|.last-branch)
+            */.session-stats|*/.last-branch|*/archive/*)
                 continue
                 ;;
         esac
-        if [ "$path" = "$lazy_sh_path" ] || [ "$path" = "$lazydev_path" ] || \
-           [[ "$path" == "${lazydev_path}/"* ]]; then
-            continue
-        fi
         printf '%s\n' "$line"
     done
 }
 
 # Return git status --porcelain output, capped at N lines (default 30).
-# Infrastructure paths (lazy.sh, lazydev, .cursor, .last-branch) are excluded.
+# Ephemeral runtime paths are excluded.
 get_git_porcelain_capped() {
     local max_lines="${1:-30}"
     git status --porcelain 2>/dev/null | filter_infra_porcelain | head -n "$max_lines"
@@ -1594,6 +1641,138 @@ validate_prd() {
     return 0
 }
 
+# ═══════════════════════════════════════════════════════════════════════════
+# MODEL CONFIGURATION (persisted in ~/.lazy-dev/config.env)
+# ═══════════════════════════════════════════════════════════════════════════
+
+models_are_configured() {
+    [ "${LAZY_DEV_MODELS_CONFIGURED:-0}" = "1" ]
+}
+
+# Populate global MODEL_IDS and MODEL_LABELS from cursor-agent --list-models
+list_available_models() {
+    local line id label list_cmd=()
+
+    if [ "${USE_STANDALONE_CURSOR_AGENT:-0}" = "1" ]; then
+        list_cmd=(cursor-agent)
+    else
+        list_cmd=(cursor agent)
+    fi
+
+    MODEL_IDS=()
+    MODEL_LABELS=()
+
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        [ "$line" = "Available models" ] && continue
+        id="${line%% - *}"
+        [ "$id" = "$line" ] && continue
+        [ "$id" = "auto" ] && continue
+        label="${line#* - }"
+        MODEL_IDS+=("$id")
+        MODEL_LABELS+=("$label")
+    done < <("${list_cmd[@]}" --list-models 2>/dev/null)
+
+    [ "${#MODEL_IDS[@]}" -gt 0 ]
+}
+
+prompt_model_choice() {
+    local category="$1"
+    local choice="" idx i
+
+    if ! list_available_models; then
+        log_error "Could not list available models from Cursor CLI."
+        return 1
+    fi
+
+    while true; do
+        echo "" >&2
+        echo "Select ${category} model:" >&2
+        for i in "${!MODEL_IDS[@]}"; do
+            printf '  %d) %s - %s\n' "$((i + 1))" "${MODEL_IDS[$i]}" "${MODEL_LABELS[$i]}" >&2
+        done
+        echo "" >&2
+        if [ -t 0 ]; then
+            read -r -p "> " choice || true
+        else
+            read -r -p "> " choice </dev/tty || true
+        fi
+
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#MODEL_IDS[@]}" ]; then
+            echo "${MODEL_IDS[$((choice - 1))]}"
+            return 0
+        fi
+
+        log_warn "Invalid selection. Enter a number between 1 and ${#MODEL_IDS[@]}." >&2
+    done
+}
+
+save_models_to_config() {
+    local impl="$1" review="$2" review2="$3"
+
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+    cat > "$CONFIG_FILE" <<EOF
+LAZY_DEV_MODELS_CONFIGURED=1
+LAZY_DEV_MODEL_IMPL="$impl"
+LAZY_DEV_MODEL_REVIEW="$review"
+LAZY_DEV_MODEL_REVIEW2="$review2"
+EOF
+
+    LAZY_DEV_MODELS_CONFIGURED=1
+    LAZY_DEV_MODEL_IMPL="$impl"
+    LAZY_DEV_MODEL_REVIEW="$review"
+    LAZY_DEV_MODEL_REVIEW2="$review2"
+
+    log_success "Model configuration saved to $CONFIG_FILE"
+}
+
+# Initialize per-project state under ~/.lazy-dev/<project>/ (no git changes in consumer repo).
+bootstrap_lazy_dev_project() {
+    if [ ! -f "$SCRIPT_DIR/lazy.sh" ]; then
+        log_error "lazy-dev not installed at $LAZY_DEV_HOME"
+        log_info "Run install.sh from the lazy-dev repository: ./install.sh"
+        return 1
+    fi
+
+    resolve_project_state_dir
+    mkdir -p "$STATE_DIR/features" "$STATE_DIR/rules/discovered"
+    printf '%s\n' "$PROJECT_ROOT" > "$STATE_DIR/.project-root"
+    log_debug "Project state directory: $STATE_DIR"
+    return 0
+}
+
+# Interactive first-time model selection; saves ~/.lazy-dev/config.env before the agent loop starts.
+ensure_models_configured() {
+    local impl review review2
+
+    if models_are_configured; then
+        return 0
+    fi
+
+    if [ ! -t 0 ] && [ ! -c /dev/tty ]; then
+        log_warn "Models not configured and no TTY available — using defaults (set LAZY_DEV_MODEL_* env vars)"
+        return 0
+    fi
+
+    echo ""
+    log_info "First-time setup: select models for each story category."
+    log_info "Press Ctrl+C to cancel."
+
+    impl=$(prompt_model_choice "implementation") || return 1
+    review=$(prompt_model_choice "first code review") || return 1
+    review2=$(prompt_model_choice "second code review") || return 1
+
+    save_models_to_config "$impl" "$review" "$review2" || return 1
+
+    echo ""
+    log_info "Implementation: ${impl}"
+    log_info "First review:   ${review}"
+    log_info "Second review:  ${review2}"
+    echo ""
+
+    return 0
+}
+
 # Get the appropriate model for a specific story ID (type/suffix mapping)
 # Usage: model=$(get_model_for_story "$story_id")
 # Suffix order matters: *-REVIEW-2 is checked before *-REVIEW.
@@ -1680,97 +1859,6 @@ detect_main_branch() {
     echo "$main_branch"
 }
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# CONCURRENCY: One lazy-dev session per feature
-# ═══════════════════════════════════════════════════════════════════════════
-
-feature_lock_path() {
-    echo "$FEATURE_DIR/.lazy-dev.lock"
-}
-
-# macOS fallback when flock is unavailable: atomic mkdir lock with stale detection
-_acquire_feature_lock_mkdir() {
-    local lock_dir="$1"
-    local retry_stale="${2:-0}"
-    local stored_pid=""
-
-    if mkdir "$lock_dir" 2>/dev/null; then
-        echo $$ > "$lock_dir/pid"
-        LAZY_DEV_FEATURE_LOCK_DIR="$lock_dir"
-        log_debug "Acquired feature lock (mkdir): $lock_dir"
-        return 0
-    fi
-
-    if [ -f "$lock_dir/pid" ]; then
-        stored_pid=$(cat "$lock_dir/pid" 2>/dev/null || true)
-    fi
-
-    if [ -n "$stored_pid" ] && kill -0 "$stored_pid" 2>/dev/null; then
-        log_error "Another lazy-dev session is running for feature '$FEATURE_NAME' (PID: $stored_pid in $lock_dir)"
-        exit 1
-    fi
-
-    if [ "$retry_stale" -eq 0 ]; then
-        log_warn "Removing stale feature lock (PID ${stored_pid:-unknown} not running): $lock_dir"
-        rm -rf "$lock_dir"
-        _acquire_feature_lock_mkdir "$lock_dir" 1
-        return $?
-    fi
-
-    log_error "Could not acquire feature lock for feature '$FEATURE_NAME' (contention at $lock_dir)"
-    exit 1
-}
-
-# Acquire exclusive lock on $FEATURE_DIR/.lazy-dev.lock (call early in main, before git setup)
-acquire_feature_lock() {
-    local lock_path
-    lock_path=$(feature_lock_path)
-
-    if [ ! -d "$FEATURE_DIR" ]; then
-        log_error "Feature directory not found: $FEATURE_DIR"
-        log_info "Create it with:"
-        log_info "  mkdir -p $FEATURE_DIR"
-        log_info "  cp $SCRIPT_DIR/examples/prd.json $FEATURE_DIR/"
-        log_info "  cp $SCRIPT_DIR/examples/progress.txt $FEATURE_DIR/"
-        exit 1
-    fi
-
-    if command -v flock >/dev/null 2>&1; then
-        exec 9>"$lock_path"
-        if ! flock -n 9; then
-            local other_pid=""
-            if [ -f "$lock_path" ]; then
-                other_pid=$(cat "$lock_path" 2>/dev/null || true)
-            fi
-            log_error "Another lazy-dev session is running for feature '$FEATURE_NAME' (PID: ${other_pid:-unknown} in $lock_path)"
-            exit 1
-        fi
-        echo $$ > "$lock_path"
-        LAZY_DEV_FEATURE_LOCK_FD=9
-        log_debug "Acquired feature lock (flock): $lock_path"
-        return 0
-    fi
-
-    _acquire_feature_lock_mkdir "$lock_path" 0
-}
-
-release_feature_lock() {
-    local lock_path
-    lock_path=$(feature_lock_path)
-
-    if [ -n "${LAZY_DEV_FEATURE_LOCK_FD:-}" ]; then
-        flock -u "$LAZY_DEV_FEATURE_LOCK_FD" 2>/dev/null || true
-        exec 9>&- 2>/dev/null || true
-        LAZY_DEV_FEATURE_LOCK_FD=""
-        rm -f "$lock_path" 2>/dev/null || true
-    fi
-
-    if [ -n "${LAZY_DEV_FEATURE_LOCK_DIR:-}" ] && [ -d "$LAZY_DEV_FEATURE_LOCK_DIR" ]; then
-        rm -rf "$LAZY_DEV_FEATURE_LOCK_DIR"
-        LAZY_DEV_FEATURE_LOCK_DIR=""
-    fi
-}
 
 # ═══════════════════════════════════════════════════════════════════════════
 # GIT SAFETY: BLOCK ALL PUSH OPERATIONS
@@ -1970,64 +2058,18 @@ ensure_feature_branch() {
     echo ""
 }
 
-# Ensure Cursor discovers lazy-dev commands at .cursor/commands/lazy-dev/
-ensure_cursor_commands_symlink() {
-    local commands_src="$SCRIPT_DIR/commands"
-    local cursor_commands_dir="$PROJECT_ROOT/.cursor/commands"
-    local symlink_path="$cursor_commands_dir/lazy-dev"
-    local rel_target
-
-    if [ ! -d "$commands_src" ]; then
-        log_debug "No commands directory at $commands_src — skipping Cursor commands symlink"
-        return 0
-    fi
-
-    mkdir -p "$cursor_commands_dir"
-
-    if [ -L "$symlink_path" ]; then
-        if [ -f "$symlink_path/generate-prd.md" ]; then
-            log_debug "Cursor command symlink OK: $symlink_path"
-        else
-            log_warn "Cursor command symlink exists but does not resolve to commands: $symlink_path"
-        fi
-        return 0
-    fi
-
-    if [ -e "$symlink_path" ]; then
-        log_warn "$symlink_path exists but is not a symlink — skipping Cursor commands symlink"
-        return 0
-    fi
-
-    if command -v python3 &> /dev/null; then
-        local commands_src_abs cursor_commands_abs
-        commands_src_abs="$(cd "$commands_src" && pwd -P)"
-        cursor_commands_abs="$(cd "$cursor_commands_dir" && pwd -P)"
-        rel_target=$(python3 -c "import os.path; print(os.path.relpath('$commands_src_abs', '$cursor_commands_abs'))")
-    else
-        rel_target="../lazy-dev/commands"
-    fi
-
-    if ln -s "$rel_target" "$symlink_path"; then
-        log_info "Created Cursor command symlink: $symlink_path → $rel_target"
-    else
-        log_warn "Failed to create Cursor command symlink: $symlink_path"
-    fi
-}
 
 # Verify required files exist
 verify_setup() {
     if [ ! -d "$FEATURE_DIR" ]; then
         log_error "Feature directory not found: $FEATURE_DIR"
-        log_info "Create it with:"
-        log_info "  mkdir -p $FEATURE_DIR"
-        log_info "  cp $SCRIPT_DIR/examples/prd.json $FEATURE_DIR/"
-        log_info "  cp $SCRIPT_DIR/examples/progress.txt $FEATURE_DIR/"
+        log_info "Create a feature PRD first: lazydev (option 1)"
         exit 1
     fi
 
     if [ ! -f "$PRD_FILE" ]; then
         log_error "PRD file not found: $PRD_FILE"
-        log_info "Copy from examples: cp $SCRIPT_DIR/examples/prd.json $FEATURE_DIR/"
+        log_info "Create a feature PRD first: lazydev (option 1)"
         exit 1
     fi
 
@@ -2036,9 +2078,6 @@ verify_setup() {
         exit 1
     fi
 
-    ensure_cursor_commands_symlink
-
-    # Create discovered directory if it doesn't exist
     mkdir -p "$DISCOVERED_DIR"
 
     # Check if jq is available
@@ -2282,9 +2321,9 @@ run_iteration() {
     fi
     
     # Agent-facing paths relative to project root (derived from install location)
-    local LAZY_DEV_PRD_PATH="${LAZY_DEV_REL}/features/$FEATURE_NAME/prd.json"
-    local LAZY_DEV_PROGRESS_PATH="${LAZY_DEV_REL}/features/$FEATURE_NAME/progress.txt"
-    local LAZY_DEV_DISCOVERED_PATH="${LAZY_DEV_REL}/rules/discovered/"
+    local LAZY_DEV_PRD_PATH="$STATE_DIR/features/$FEATURE_NAME/prd.json"
+    local LAZY_DEV_PROGRESS_PATH="$STATE_DIR/features/$FEATURE_NAME/progress.txt"
+    local LAZY_DEV_DISCOVERED_PATH="$STATE_DIR/rules/discovered/"
 
     # Resolve assigned story before building CONTEXT (runner-owned selection)
     local next_story_id
@@ -2331,7 +2370,7 @@ Review scope: run \`git diff ${merge_base}..HEAD\` to see all feature changes."
 # Feature Context
 - Feature: $FEATURE_NAME
 - Workspace/Project Root: $PROJECT_ROOT
-- Lazy-dev directory: $LAZY_DEV_REL
+- Lazy-dev state directory: $STATE_DIR
 - PRD: $LAZY_DEV_PRD_PATH
 - Progress: $LAZY_DEV_PROGRESS_PATH
 - Shared discovered patterns: $LAZY_DEV_DISCOVERED_PATH (capped injection below)
@@ -2343,7 +2382,7 @@ $PROMPT_CONTENT
 
 ---
 
-# Injected Protocol (canonical source: ${LAZY_DEV_REL}/rules/*.mdc)
+# Injected Protocol (canonical source: ~/.lazy-dev/rules/*.mdc)
 
 $INLINED_RULES
 ${discovered_block}
@@ -2600,9 +2639,6 @@ main() {
     trap handle_interrupt INT QUIT HUP
     trap cleanup EXIT TERM
 
-    # One session per feature — before git setup (releases in cleanup EXIT trap)
-    acquire_feature_lock
-    
     # Start caffeinate to prevent system sleep (keeps network connections alive)
     # -d = prevent display sleep, -i = prevent idle sleep
     if command -v caffeinate &> /dev/null; then
@@ -2619,8 +2655,12 @@ main() {
     log_debug "PRD file: $PRD_FILE"
     log_debug "Prompt file: $PROMPT_FILE"
 
+    bootstrap_lazy_dev_project || exit 1
+    set_feature_paths
+
     verify_setup
-    
+    ensure_models_configured || exit 1
+
     # Log initial resource state for comparison (debug only)
     if [ "$VERBOSE" = "1" ]; then
         log_memory_usage
@@ -2789,5 +2829,12 @@ main() {
 
 # Only run main when executed directly (not when sourced for function tests)
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    if [[ "${LAZY_DEV_BOOTSTRAP_ONLY:-0}" = "1" ]]; then
+        bootstrap_lazy_dev_project || exit 1
+        if [[ "${LAZY_DEV_PRINT_STATE_DIR:-0}" = "1" ]]; then
+            echo "$STATE_DIR"
+        fi
+        exit 0
+    fi
     main "$@"
 fi

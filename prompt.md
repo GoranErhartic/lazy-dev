@@ -164,8 +164,8 @@ Each review story MUST output findings to an independent file:
 
 | Story | Output File | Purpose |
 |-------|-------------|---------|
-| US-REVIEW | `<lazy-dev>/features/<feature>/review-gpt.md` (see Feature Context for exact path) | GPT 5.3 Codex findings |
-| US-REVIEW-2 | `<lazy-dev>/features/<feature>/review-gemini.md` (see Feature Context for exact path) | Gemini 3 Pro findings |
+| US-REVIEW | `~/.lazy-dev/<project>/features/<feature>/review-gpt.md` (see Feature Context for exact path) | GPT 5.3 Codex findings |
+| US-REVIEW-2 | `~/.lazy-dev/<project>/features/<feature>/review-gemini.md` (see Feature Context for exact path) | Gemini 3 Pro findings |
 
 ### US-REVIEW (GPT 5.3 Codex) Instructions
 
