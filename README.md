@@ -1,5 +1,7 @@
 # Lazy Dev
 
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Me-F16061?logo=ko-fi&logoColor=white)](https://ko-fi.com/goranlegenda)
+
 An autonomous agent loop framework for Cursor. Runs multiple agent iterations to complete user stories from a PRD, with automatic task breakdown, quality gates, and knowledge persistence.
 
 **Platform:** macOS and Linux only.
@@ -120,3 +122,15 @@ After changing this repository, reinstall to `~/.lazy-dev/`:
 ```bash
 ./install.sh
 ```
+
+## Support
+
+If you find this project useful, consider supporting its development:
+
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/goranlegenda)
+
+Or buy me a coffee at [ko-fi.com/goranlegenda](https://ko-fi.com/goranlegenda).
+
+## License
+
+MIT
