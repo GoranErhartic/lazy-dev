@@ -34,13 +34,14 @@ Lazy Dev
 q) Quit
 ```
 
-1. **Create new feature PRD** — interactive `cursor-agent` session with the `generate-prd` skill. Writes `~/.lazy-dev/<repo-name>/features/<name>/prd.json`.
+1. **Create new feature PRD** — runs headless PRD generation with live stream formatting (`prd.sh`). Writes `~/.lazy-dev/<repo-name>/features/<name>/prd.json`.
 2. **Implement a feature** — runs the agent loop until all stories pass (or the loop stops on budget/stuck/max-iterations).
 
-You can also run the loop directly:
+You can also run the tools directly:
 
 ```bash
-lazy.sh <feature-name>
+prd.sh [feature-name]     # Generate PRD for a feature
+lazy.sh <feature-name>    # Run implementation loop
 ```
 
 ## Directory layout
@@ -50,6 +51,7 @@ lazy.sh <feature-name>
 ```
 ~/.lazy-dev/
 ├── lazy.sh
+├── prd.sh
 ├── lazydev
 ├── prompt.md
 ├── config.env              # model preferences (first implement run)

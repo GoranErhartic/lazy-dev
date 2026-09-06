@@ -15,8 +15,8 @@ esac
 
 LAZY_DEV_HOME="${LAZY_DEV_HOME:-$HOME/.lazy-dev}"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOCAL_BIN="${HOME}/.local/bin"
-CURSOR_SKILL="${HOME}/.cursor/skills/generate-prd"
+LOCAL_BIN="${LOCAL_BIN:-${HOME}/.local/bin}"
+CURSOR_SKILL="${CURSOR_SKILL:-${HOME}/.cursor/skills/generate-prd}"
 
 install_tree() {
     local name="$1"
@@ -28,7 +28,7 @@ echo "Installing lazy-dev to ${LAZY_DEV_HOME}..."
 
 mkdir -p "$LAZY_DEV_HOME"
 
-for file in lazy.sh lazydev prompt.md; do
+for file in lazy.sh prd.sh lazydev prompt.md; do
     cp "${SOURCE_DIR}/${file}" "${LAZY_DEV_HOME}/${file}"
     chmod +x "${LAZY_DEV_HOME}/${file}"
 done
@@ -39,13 +39,17 @@ done
 
 mkdir -p "$LOCAL_BIN"
 ln -sf "${LAZY_DEV_HOME}/lazydev" "${LOCAL_BIN}/lazydev"
+ln -sf "${LAZY_DEV_HOME}/prd.sh" "${LOCAL_BIN}/prd"
+ln -sf "${LAZY_DEV_HOME}/lazy.sh" "${LOCAL_BIN}/lazy"
 
 mkdir -p "$(dirname "$CURSOR_SKILL")"
 ln -sfn "${LAZY_DEV_HOME}/skills/generate-prd" "$CURSOR_SKILL"
 
 echo ""
 echo "Installed lazy-dev to ${LAZY_DEV_HOME}"
-echo "  CLI: ${LOCAL_BIN}/lazydev"
+echo "  CLI:   ${LOCAL_BIN}/lazydev"
+echo "  PRD:   ${LOCAL_BIN}/prd"
+echo "  Loop:  ${LOCAL_BIN}/lazy"
 echo "  Skill: ${CURSOR_SKILL}"
 echo ""
 

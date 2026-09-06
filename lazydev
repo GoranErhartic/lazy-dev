@@ -13,6 +13,16 @@ set -e
 
 LAZY_DEV_HOME="${LAZY_DEV_HOME:-$HOME/.lazy-dev}"
 LAZY_SH="${LAZY_DEV_HOME}/lazy.sh"
+PRD_SH="${LAZY_DEV_HOME}/prd.sh"
+
+# Allow running directly from repo checkout if not yet installed globally
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+if [ ! -x "$LAZY_SH" ] && [ -x "$SCRIPT_DIR/lazy.sh" ]; then
+    LAZY_SH="$SCRIPT_DIR/lazy.sh"
+fi
+if [ ! -x "$PRD_SH" ] && [ -x "$SCRIPT_DIR/prd.sh" ]; then
+    PRD_SH="$SCRIPT_DIR/prd.sh"
+fi
 
 # PROJECT_ROOT is the git workspace root
 if _git_root=$(git rev-parse --show-toplevel 2>/dev/null); then
@@ -70,8 +80,8 @@ check_auth() {
 preflight() {
     resolve_cursor_cmd
 
-    if [ ! -x "$LAZY_SH" ]; then
-        log_error "lazy-dev not installed at $LAZY_DEV_HOME"
+    if [ ! -x "$LAZY_SH" ] || [ ! -x "$PRD_SH" ]; then
+        log_error "lazy-dev not properly installed at $LAZY_DEV_HOME"
         log_info "Run install.sh from the lazy-dev repository:"
         log_info "  ./install.sh"
         exit 1
@@ -110,31 +120,13 @@ read_menu_choice() {
 }
 
 run_create_prd() {
-    local description="" prompt="/generate-prd"
-
-    echo ""
-    read -r -p "Brief feature description (optional, Enter to skip): " description || true
-    if [ -n "$description" ]; then
-        prompt="/generate-prd $description"
-    fi
-
-    log_info "Starting interactive PRD session (exit the agent to return to the menu)…"
-    log_info "Lazy-dev state directory: $STATE_DIR"
-    echo ""
-
-    "$CURSOR_CMD" "${CURSOR_ARGS[@]}" \
-        --workspace "$PROJECT_ROOT" \
-        --trust \
-        "${prompt}
-
-Lazy-dev state directory for this project: ${STATE_DIR}"
-
+    "$PRD_SH"
     local exit_code=$?
     echo ""
     if [ $exit_code -eq 0 ]; then
-        log_success "PRD session ended."
+        log_success "PRD creation complete."
     else
-        log_warn "PRD session ended (exit code $exit_code)."
+        log_warn "PRD creation ended (exit code $exit_code)."
     fi
 }
 
