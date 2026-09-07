@@ -14,6 +14,19 @@ Generate a structured Product Requirements Document (PRD) from human-readable fe
 
 **DO NOT IMPLEMENT THE FEATURE. Only generate the PRD.**
 
+## ABSOLUTE CONSTRAINTS (non-negotiable)
+
+This session is **PRD generation only**. Even if the user's description says "implement", "build", or "add" — treat it as requirements input, not a coding task.
+
+- **NEVER** create or modify application source code (`src/`, `app/`, `components/`, `pages/`, `lib/`, etc.)
+- **NEVER** set `passes: true` or increment `attempts` on any story in `prd.json`
+- **NEVER** run build, test, lint, or type-check as part of this session
+- **ONLY** write files under `<state-dir>/features/<feature-name>/` (`prd.json`, `progress.txt`)
+- **ONLY** git change allowed: branch checkout (when on main/master)
+- Implementation is done **later** by the user via `lazydev` → option **2** (Implement a feature)
+
+If you catch yourself writing a component, editing app code, or marking a story complete — **stop immediately**. You are in the wrong mode.
+
 ---
 
 ## PHASE 1: Gather Requirements
@@ -204,12 +217,12 @@ While the output format is `prd.json`, mentally structure the feature as:
 **When Jira task is provided (e.g., MED-523):**
 - Use `{JIRA-ID}-001`, `{JIRA-ID}-002`, etc. (e.g., `MED-523-001`, `MED-523-002`)
 - This links stories directly to the Jira ticket for traceability
-- Review story IDs use the same prefix with suffixes: `MED-523-REVIEW`, `MED-523-REVIEW-2`, `MED-523-IMPL-RECS`. The lazy-dev loop selects models by **suffix** (`*-REVIEW-2` before `*-REVIEW`) using `LAZY_DEV_MODEL_REVIEW` and `LAZY_DEV_MODEL_REVIEW2` in `lazy.sh`
+- Review story IDs use the same prefix with suffixes: `MED-523-REVIEW`, `MED-523-REVIEW-2`, `MED-523-IMPL-RECS`. The lazy-dev implementation loop selects models by **suffix** (`*-REVIEW-2` before `*-REVIEW`) using the models configured at `lazydev init`.
 
 **When no Jira task is provided:**
 - Use `US-001`, `US-002`, etc. for sequential numbering
 
-**Important:** Story IDs are for internal PRD tracking only. Implementation commits should use the Jira task ID (e.g., `feat: (MED-523) Add priority field`), NOT granular story IDs like `MED-523-001`. The PRD is committed once at creation as the branch's first commit (see Phase 4).
+**Important:** Story IDs are for internal PRD tracking only. During implementation (via `lazydev` option 2), the runner commits using the Jira task ID (e.g., `feat: (MED-523) Add priority field`), NOT granular story IDs like `MED-523-001`. Do not commit during PRD generation — the user commits when ready.
 
 Stories should be independent enough to be worked on in separate agent iterations.
 
@@ -247,8 +260,8 @@ Stories should be independent enough to be worked on in separate agent iteration
 Every PRD automatically includes three final user stories for quality assurance. These ensure proper dual-model code review and implementation of fixes **at the end of every feature**:
 
 **With Jira (e.g., MED-523):**
-1. **MED-523-REVIEW** (Priority 997): First code review → outputs to `review-gpt.md`
-2. **MED-523-REVIEW-2** (Priority 998): Second code review → outputs to `review-gemini.md`
+1. **MED-523-REVIEW** (Priority 997): First code review → outputs to `review-1.md`
+2. **MED-523-REVIEW-2** (Priority 998): Second code review → outputs to `review-2.md`
 3. **MED-523-IMPL-RECS** (Priority 999): Implement recommendations from both reviews
 
 **Without Jira:**
@@ -260,7 +273,7 @@ Each review agent outputs findings to an independent file in the feature directo
 
 **Path placeholders:** Review output paths below use `<feature>` as a placeholder. Substitute the actual feature name into these paths when generating the PRD.
 
-The loop runs until all stories have `passes: true`, bounded by `--max-iterations` (default 20); re-running `./lazy.sh <feature>` resumes where the PRD left off.
+The implementation loop (via `lazydev` option 2) runs until all stories have `passes: true`. It auto-resumes if a session ends before completion.
 
 ---
 
@@ -273,8 +286,8 @@ The loop runs until all stories have `passes: true`, bounded by `--max-iteration
 
 2. **Git Branch Setup (before writing any files):**
    * **Require a clean working tree.** If `git status --porcelain` is not empty, stop and ask the user to commit or stash changes first.
-   * **Prerequisite:** The user must have run `lazydev` once so project state exists under `~/.lazy-dev/<project>/`.
-   * **State directory:** Use the path from the user message (`Lazy-dev state directory for this project: ...`). If absent, resolve as `~/.lazy-dev/<repo-basename>/features/` (same slug rules as `lazy.sh`: lowercase repo folder name; append `-<8-char-hash>` if `.project-root` points elsewhere).
+   * **Prerequisite:** The user must have run `lazydev init` so `.lazy-dev/config` exists in the repo.
+   * **State directory:** Use the path from the user message (`Lazy-dev state directory for this project: ...`). If absent, resolve as `<repo-root>/.lazy-dev` (git workspace root + `/.lazy-dev`).
    * Detect the current branch: `git branch --show-current`
    * Detect main branch name (`main` or `master`).
 
@@ -356,13 +369,13 @@ The loop runs until all stories have `passes: true`, bounded by `--max-iteration
           "Verify security (input validation, XSS, SQL injection)",
           "Ensure proper error handling throughout",
           "Confirm test coverage is adequate",
-          "Document all findings and recommendations in review-gpt.md file in the feature directory",
+          "Document all findings and recommendations in review-1.md file in the feature directory",
           "Build/typecheck passes"
         ],
         "priority": 997,
         "passes": false,
         "attempts": 0,
-        "notes": "Auto-generated first review step. Output findings to <state-dir>/features/<feature>/review-gpt.md"
+        "notes": "Auto-generated first review step. Output findings to <state-dir>/features/<feature>/review-1.md"
       },
       {
         "id": "[JIRA-123-REVIEW-2 or US-REVIEW-2 if no Jira]",
@@ -373,21 +386,21 @@ The loop runs until all stories have `passes: true`, bounded by `--max-iteration
           "Check for security vulnerabilities and edge cases",
           "Verify error handling and resilience patterns",
           "Look for architectural improvements and best practices",
-          "Document all findings and recommendations in review-gemini.md file in the feature directory",
+          "Document all findings and recommendations in review-2.md file in the feature directory",
           "Build/typecheck passes"
         ],
         "priority": 998,
         "passes": false,
         "attempts": 0,
-        "notes": "Auto-generated second review step. Output findings to <state-dir>/features/<feature>/review-gemini.md"
+        "notes": "Auto-generated second review step. Output findings to <state-dir>/features/<feature>/review-2.md"
       },
       {
         "id": "[JIRA-123-IMPL-RECS or US-IMPLEMENT-RECS if no Jira]",
         "title": "Implement code review recommendations",
         "description": "As a developer, I need to implement the recommendations and fixes identified during both code reviews.",
         "acceptanceCriteria": [
-          "Read review-gpt.md for first review findings",
-          "Read review-gemini.md for second review findings",
+          "Read review-1.md for first review findings",
+          "Read review-2.md for second review findings",
           "Synthesize and prioritize recommendations from both reviews",
           "Address all critical and high-priority issues from both reviews",
           "Re-verify all previous acceptance criteria still pass",
@@ -397,13 +410,13 @@ The loop runs until all stories have `passes: true`, bounded by `--max-iteration
         "priority": 999,
         "passes": false,
         "attempts": 0,
-        "notes": "Auto-generated implementation step. Read both review-gpt.md and review-gemini.md from feature directory."
+        "notes": "Auto-generated implementation step. Read both review-1.md and review-2.md from feature directory."
       }
     ]
   }
   ```
    
-   **Note:** The `US-REVIEW`, `US-REVIEW-2`, and `US-IMPLEMENT-RECS` stories are **required** in every PRD. Add them with priorities 997, 998, and 999 respectively to ensure they always run last. Each review story outputs findings to its own file (`review-gpt.md` or `review-gemini.md`) for independent analysis, and the implementation story reads both files to synthesize recommendations.
+   **Note:** The `US-REVIEW`, `US-REVIEW-2`, and `US-IMPLEMENT-RECS` stories are **required** in every PRD. Add them with priorities 997, 998, and 999 respectively to ensure they always run last. Each review story outputs findings to its own file (`review-1.md` or `review-2.md`) for independent analysis, and the implementation story reads both files to synthesize recommendations.
 
    **Runner-owned fields:** Include `"attempts": 0` on every story (defaults to 0 if omitted). The runner increments `attempts` after failed iterations and sets `"blocked": true` after 3 failures — agents must never set `blocked`.
 
@@ -431,12 +444,15 @@ The loop runs until all stories have `passes: true`, bounded by `--max-iteration
    -->
    ```
 
-6. **Verify files (no repo commit for PRD state):**
-   * PRD files live under `~/.lazy-dev/<project>/` — **outside the git repository**. Do not `git add` or commit `prd.json` / `progress.txt`.
+6. **Verify files:**
+   * PRD files live under `<repo>/.lazy-dev/features/<feature-name>/`.
+   * Check `Lazy-dev tracked in git` from the user message (or read `.lazy-dev/config` → `tracked`):
+     - **`tracked: false` (default):** Do not `git add` or commit `prd.json` / `progress.txt`. Branch checkout may be the only git change.
+     - **`tracked: true`:** PRD files may appear in `git status`; do not auto-commit unless the user asks.
    * Confirm both files exist and `prd.json` validates.
-   * The consumer repo working tree should remain unchanged by PRD creation (branch checkout is the only git change).
+   * All stories must have `passes: false` and `attempts: 0` — you are not implementing anything in this session.
 
-   When the user later runs `lazy.sh <feature-name>`, the runner expects a clean tree and will stay on this branch (no second branch prompt).
+   When the user later runs `lazydev` and chooses option **2** (Implement a feature), the runner expects a clean tree and will use `branchName` from the PRD automatically.
 
 ---
 
@@ -774,7 +790,7 @@ Does this accurately capture what you want? If yes, I'll proceed with generating
 }
 ```
 
-**Note on Git commits:** The PRD skill creates the branch and commits `prd.json` + `progress.txt` as the first commit. During `./lazy.sh` implementation, the runner commits each story — use the Jira task ID in those messages (e.g., `feat: (TASK-456) Add priority field`), not granular story IDs like `TASK-456-001`.
+**Note on Git commits:** The PRD skill creates the branch and writes `prd.json` + `progress.txt` — do not auto-commit them. During implementation (`lazydev` option 2), the runner commits each story — use the Jira task ID in those messages (e.g., `feat: (TASK-456) Add priority field`), not granular story IDs like `TASK-456-001`.
 
 ---
 
@@ -808,8 +824,8 @@ Before finalizing the PRD, verify:
 - [ ] Priorities are unique and sequential (no duplicates: 1, 2, 3...)
 - [ ] Story IDs are unique and sequential (US-001, US-002...)
 - [ ] Non-goals/out-of-scope items documented in notes
-- [ ] **US-REVIEW included with priority 997** (first code review, outputs to review-gpt.md)
-- [ ] **US-REVIEW-2 included with priority 998** (second code review, outputs to review-gemini.md)
+- [ ] **US-REVIEW included with priority 997** (first code review, outputs to review-1.md)
+- [ ] **US-REVIEW-2 included with priority 998** (second code review, outputs to review-2.md)
 - [ ] **US-IMPLEMENT-RECS included with priority 999** (implement recommendations from both reviews)
 - [ ] **Each story includes note:** "Follow project rules in .cursor/rules/ folder (if it exists in this project)"
 - [ ] **If Jira task was mentioned:** `jiraTaskId` field is set and branch name includes it
@@ -817,14 +833,16 @@ Before finalizing the PRD, verify:
 - [ ] `prd.json` is valid JSON
 - [ ] `progress.txt` template created
 
-**Git Branch & Initial Commit:**
+**Git Branch & Files:**
 - [ ] Working tree was clean before branch setup
 - [ ] On main/master: user was asked for branch name; branch created/checked out
 - [ ] On feature branch: stayed on current branch; `branchName` in PRD matches
-- [ ] `prd.json` and `progress.txt` committed as first commit on the branch
-- [ ] Initial commit message follows `chore: add PRD for <feature>` (or `chore: (<JIRA-ID>) add PRD for <feature>`)
+- [ ] `prd.json` and `progress.txt` written and validated (user may commit when ready)
+- [ ] No auto-commit of PRD files during generation
+- [ ] All stories have `passes: false` — no implementation was done in this session
+- [ ] No application source code was created or modified
 
-**Git Commits (reminder for lazy.sh loop):**
+**Git Commits (reminder for implementation via lazydev option 2):**
 - [ ] Implementation commits use Jira task ID only: `feat: (JIRA-123) Description`
 - [ ] Implementation commits do NOT use granular story IDs (JIRA-123-001)
 

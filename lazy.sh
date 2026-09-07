@@ -1,6 +1,5 @@
 #!/bin/bash
-# Lazy Dev - Cursor CLI Agent Loop
-# Usage: ./lazy.sh <feature-name>
+# Lazy Dev - internal agent-loop engine (invoked by lazydev, not directly).
 #
 # Each feature gets its own subfolder with isolated state.
 # Runs continuously until ALL user stories in PRD have passes: true.
@@ -10,53 +9,26 @@
 # ║                        GIT POLICY (runner-owned)                          ║
 # ╠═══════════════════════════════════════════════════════════════════════════╣
 # ║  1. Fail fast if working tree is not clean at session/iteration start    ║
-# ║  2. On main: prompt for branch name; otherwise stay on current branch    ║
+# ║  2. On main: use branchName from prd.json; prompt only if missing         ║
 # ║  3. Runner commits all changes (git add -A) after each story              ║
 # ║  4. Git push is BLOCKED during the session                               ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
 set -e
 
-# Print CLI usage (--help and missing-args). Caller must resolve MAX_ITERATIONS first.
+# Print CLI usage (--help). Internal runner; use lazydev for day-to-day work.
 print_usage() {
-    echo "Usage: ./lazy.sh [OPTIONS] <feature-name>"
+    echo "lazy.sh — internal agent-loop engine (use lazydev to implement features)"
+    echo ""
+    echo "Usage: lazy.sh [OPTIONS] <feature-name>"
     echo ""
     echo "Options:"
     echo "  --verbose, -v          Enable verbose/debug output"
-    echo "  --max-iterations N     Set maximum iterations (default: 20)"
-    echo "  --bootstrap-project    Initialize ~/.lazy-dev/<project>/ state and exit"
-    echo "  --print-state-dir      With --bootstrap-project, print the state directory path"
+    echo "  --max-iterations N     Set maximum iterations per session (default: 20)"
     echo "  --help, -h             Show this help message"
     echo ""
-    echo "Runs continuously until ALL user stories in PRD have passes: true."
-    echo "Agent runs in headless mode with auto-approve enabled."
-    echo "Maximum iterations: $MAX_ITERATIONS (override with --max-iterations or LAZY_DEV_MAX_ITERATIONS)"
-    echo ""
-    echo "Examples:"
-    echo "  ./lazy.sh my-feature              # Run agent for feature"
-    echo "  ./lazy.sh features/user-auth      # Also accepts features/ prefix"
-    echo "  ./lazy.sh -v my-feature           # With verbose output"
-    echo "  ./lazy.sh --max-iterations 30 my-feature  # Custom max iterations"
-    echo ""
-    echo "Environment variables:"
-    echo "  LAZY_DEV_TIMEOUT=<s>         Per-iteration timeout in seconds (default: 1800)"
-    echo "  LAZY_DEV_MAX_ITERATIONS=<n>  Maximum iterations (default: 20)"
-    echo "  LAZY_DEV_FASTFAIL_SECS=<s>   Failed iterations shorter than this are not retried (default: 60; 0 disables)"
-    echo "  LAZY_DEV_FAKE_AGENT=<path>   Test hook: run this executable instead of the Cursor CLI"
-    echo "  LAZY_DEV_MODEL_IMPL=<id>     Implementation story model (default: opus-4.6)"
-    echo "  LAZY_DEV_MODEL_REVIEW=<id>   First review story model (default: gpt-5.3-codex)"
-    echo "  LAZY_DEV_MODEL_REVIEW2=<id>  Second review story model (default: gemini-3-pro)"
-    echo "  LAZY_DEV_GATE_TIMEOUT=<s>    Per-gate build/test timeout in seconds (default: 600)"
-    echo "  LAZY_DEV_STALL_TIMEOUT=<s>   Kill if agent output is idle this long (default: 600)"
-    echo "  LAZY_DEV_RESULT_TAIL_HANG_TIMEOUT=<s> Kill if result received but pipeline alive (default: 10)"
-    echo "  LAZY_DEV_MAX_COST=<usd>      Stop when cumulative session cost exceeds this (decimal USD)"
-    echo "  LAZY_DEV_MAX_MINUTES=<n>     Stop when cumulative session duration exceeds this (minutes)"
-    echo ""
-    echo "Install lazy-dev globally (once per machine):"
-    echo "  ./install.sh"
-    echo ""
-    echo "To create a new feature:"
-    echo "  lazydev   # option 1: Create new feature PRD"
+    echo "Maximum iterations per session: $MAX_ITERATIONS"
+    echo "(override with --max-iterations or LAZY_DEV_MAX_ITERATIONS)"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -71,8 +43,13 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
 # Parse flags
 VERBOSE=""
 SHOW_HELP=0
-LAZY_DEV_BOOTSTRAP_ONLY=0
+LAZY_DEV_INIT_ONLY=0
 LAZY_DEV_PRINT_STATE_DIR=0
+LAZY_DEV_CHECK_INITIALIZED=0
+LAZY_DEV_INIT_TRACKED=""
+LAZY_DEV_INIT_MODEL_IMPL=""
+LAZY_DEV_INIT_MODEL_REVIEW=""
+LAZY_DEV_INIT_MODEL_REVIEW2=""
 while [[ "$1" == -* ]]; do
         case "$1" in
         --verbose|-v)
@@ -84,12 +61,36 @@ while [[ "$1" == -* ]]; do
             MAX_ITERATIONS="$1"
             shift
             ;;
-        --bootstrap-project)
-            LAZY_DEV_BOOTSTRAP_ONLY=1
+        --init-project)
+            LAZY_DEV_INIT_ONLY=1
+            shift
+            ;;
+        --tracked)
+            shift
+            LAZY_DEV_INIT_TRACKED="$1"
+            shift
+            ;;
+        --model-impl)
+            shift
+            LAZY_DEV_INIT_MODEL_IMPL="$1"
+            shift
+            ;;
+        --model-review)
+            shift
+            LAZY_DEV_INIT_MODEL_REVIEW="$1"
+            shift
+            ;;
+        --model-review2)
+            shift
+            LAZY_DEV_INIT_MODEL_REVIEW2="$1"
             shift
             ;;
         --print-state-dir)
             LAZY_DEV_PRINT_STATE_DIR=1
+            shift
+            ;;
+        --check-initialized)
+            LAZY_DEV_CHECK_INITIALIZED=1
             shift
             ;;
         --help|-h)
@@ -115,7 +116,10 @@ if [ "$SHOW_HELP" = "1" ]; then
 fi
 
 # Validate arguments
-if [ "${LAZY_DEV_BOOTSTRAP_ONLY:-0}" != "1" ] && [ -z "$1" ]; then
+if [ "${LAZY_DEV_INIT_ONLY:-0}" != "1" ] \
+    && [ "${LAZY_DEV_PRINT_STATE_DIR:-0}" != "1" ] \
+    && [ "${LAZY_DEV_CHECK_INITIALIZED:-0}" != "1" ] \
+    && [ -z "$1" ]; then
     print_usage
     exit 1
 fi
@@ -125,16 +129,14 @@ fi  # ── end CLI entry point (direct execution only) ──
 # Configuration
 LAZY_DEV_HOME="${LAZY_DEV_HOME:-$HOME/.lazy-dev}"
 SCRIPT_DIR="$LAZY_DEV_HOME"
-CONFIG_FILE="$LAZY_DEV_HOME/config.env"
-PROJECT_SLUG=""
 STATE_DIR=""
 
 FEATURE_NAME=""
-if [[ "${LAZY_DEV_BOOTSTRAP_ONLY:-0}" != "1" ]] && [ -n "${1:-}" ]; then
+if [[ "${LAZY_DEV_INIT_ONLY:-0}" != "1" ]] && [ -n "${1:-}" ]; then
     FEATURE_NAME="${1#features/}"
 fi
 
-# PROJECT_ROOT is the git workspace root
+# PROJECT_ROOT is the git workspace root (required for init and agent loop)
 if _git_root=$(git rev-parse --show-toplevel 2>/dev/null); then
     PROJECT_ROOT="$(cd "$_git_root" && pwd -P)"
 else
@@ -190,6 +192,10 @@ STALL_TIMEOUT="${LAZY_DEV_STALL_TIMEOUT:-600}"
 # Override with LAZY_DEV_RESULT_TAIL_HANG_TIMEOUT.
 RESULT_TAIL_HANG_TIMEOUT="${LAZY_DEV_RESULT_TAIL_HANG_TIMEOUT:-10}"
 
+# End iteration when assigned story is passes:true in PRD but cursor-cli keeps running
+# (thinking tail / no result event). Override with LAZY_DEV_HANDOFF_TIMEOUT.
+HANDOFF_COMPLETE_TIMEOUT="${LAZY_DEV_HANDOFF_TIMEOUT:-3}"
+
 # Maximum iterations to prevent infinite loops (default 20)
 # Precedence: --max-iterations flag (parsed above) > LAZY_DEV_MAX_ITERATIONS
 # env var > 20. Guarded so the flag value is not clobbered by this line.
@@ -209,25 +215,8 @@ BACKOFF_SCHEDULE=(5 15 45)
 # Override with LAZY_DEV_FASTFAIL_SECS
 FASTFAIL_SECS="${LAZY_DEV_FASTFAIL_SECS:-60}"
 
-# Test hook: when set (non-empty), run_iteration uses this executable in
-# place of cursor/cursor-agent (same flags + prompt argument, same
-# tee | parse_agent_output pipeline). Lets you test loop behavior without
-# launching a real agent. Example:
-#   LAZY_DEV_FAKE_AGENT=/path/to/fake-agent.sh ./lazy.sh my-feature
-LAZY_DEV_FAKE_AGENT="${LAZY_DEV_FAKE_AGENT:-}"
-
-# Per-type model overrides (consumed by get_model_for_story; per-story .model
-# field in prd.json still wins via resolve_model_for_story)
+# Per-type model overrides (loaded from .lazy-dev/config in main(); env vars override config).
 LAZY_DEV_MODELS_CONFIGURED=0
-LAZY_DEV_MODEL_IMPL="${LAZY_DEV_MODEL_IMPL:-opus-4.6}"
-LAZY_DEV_MODEL_REVIEW="${LAZY_DEV_MODEL_REVIEW:-gpt-5.3-codex}"
-LAZY_DEV_MODEL_REVIEW2="${LAZY_DEV_MODEL_REVIEW2:-gemini-3-pro}"
-
-# Load persisted model config from ~/.lazy-dev/config.env
-if [ -f "$CONFIG_FILE" ]; then
-    # shellcheck source=/dev/null
-    source "$CONFIG_FILE"
-fi
 
 # Per-gate build/test timeout (seconds); consumed by run_quality_gate
 LAZY_DEV_GATE_TIMEOUT="${LAZY_DEV_GATE_TIMEOUT:-600}"
@@ -275,29 +264,196 @@ log_debug() {
     fi
 }
 
-# Filesystem-safe project name from repo root (basename, lowercased).
-project_slug_from_root() {
-    local root="$1"
-    basename "$root" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g'
+# Per-project state lives under <repo>/.lazy-dev/
+resolve_project_state_dir() {
+    STATE_DIR="$PROJECT_ROOT/.lazy-dev"
 }
 
-# Per-project state lives under ~/.lazy-dev/<project>/ (never in the consumer repo).
-resolve_project_state_dir() {
-    local slug existing_root marker
+lazy_dev_config_path() {
+    echo "$STATE_DIR/config"
+}
 
-    slug=$(project_slug_from_root "$PROJECT_ROOT")
-    [ -n "$slug" ] || slug="project"
+# True when inside a git repository.
+require_git_repo() {
+    if ! git -C "$PROJECT_ROOT" rev-parse --show-toplevel >/dev/null 2>&1; then
+        log_error "Not inside a git repository."
+        log_info "Run lazydev init from the root of a git repo."
+        return 1
+    fi
+    return 0
+}
 
-    marker="$LAZY_DEV_HOME/$slug/.project-root"
-    if [ -f "$marker" ]; then
-        existing_root=$(tr -d '\n' < "$marker")
-        if [ "$existing_root" != "$PROJECT_ROOT" ]; then
-            slug="${slug}-$(printf '%s' "$PROJECT_ROOT" | shasum -a 256 2>/dev/null | cut -c1-8)"
-        fi
+# True when .lazy-dev/config exists with tracked + models fields.
+project_is_initialized() {
+    local cfg
+    cfg=$(lazy_dev_config_path)
+    [ -f "$cfg" ] || return 1
+    jq -e '
+        (.tracked | type) == "boolean"
+        and (.models.impl? | type) == "string"
+        and (.models.review? | type) == "string"
+        and (.models.review2? | type) == "string"
+    ' "$cfg" >/dev/null 2>&1
+}
+
+lazy_dev_is_tracked() {
+    jq -r '.tracked // false' "$(lazy_dev_config_path)" 2>/dev/null | grep -q '^true$'
+}
+
+lazy_dev_tracked_label() {
+    if lazy_dev_is_tracked; then
+        echo "yes"
+    else
+        echo "no"
+    fi
+}
+
+ensure_gitignore_entry() {
+    local pattern="$1"
+    local gitignore="$PROJECT_ROOT/.gitignore"
+
+    if [ -f "$gitignore" ] && grep -qF "$pattern" "$gitignore" 2>/dev/null; then
+        return 0
     fi
 
-    PROJECT_SLUG="$slug"
-    STATE_DIR="$LAZY_DEV_HOME/$PROJECT_SLUG"
+    {
+        echo ""
+        echo "# lazy-dev"
+        echo "$pattern"
+    } >> "$gitignore"
+}
+
+write_lazy_dev_nested_gitignore() {
+    cat > "$STATE_DIR/.gitignore" <<'EOF'
+**/.session-stats
+**/.last-branch
+**/archive/
+EOF
+}
+
+write_project_config() {
+    local tracked="$1" impl="$2" review="$3" review2="$4"
+    local tracked_json="false"
+
+    [ "$tracked" = "true" ] && tracked_json="true"
+
+    mkdir -p "$STATE_DIR"
+    jq -n \
+        --argjson tracked "$tracked_json" \
+        --arg impl "$impl" \
+        --arg review "$review" \
+        --arg review2 "$review2" \
+        '{tracked: $tracked, models: {impl: $impl, review: $review, review2: $review2}}' \
+        > "$(lazy_dev_config_path)"
+}
+
+load_models_from_project_config() {
+    local cfg impl review review2
+
+    cfg=$(lazy_dev_config_path)
+    if [ ! -f "$cfg" ]; then
+        log_error "Project config not found: $cfg"
+        return 1
+    fi
+
+    impl=$(jq -r '.models.impl // empty' "$cfg")
+    review=$(jq -r '.models.review // empty' "$cfg")
+    review2=$(jq -r '.models.review2 // empty' "$cfg")
+
+    if [ -z "$impl" ] || [ -z "$review" ] || [ -z "$review2" ]; then
+        log_error "Invalid project config (missing models): $cfg"
+        return 1
+    fi
+
+    # Env vars override config; config overrides script fallbacks in get_model_for_story.
+    LAZY_DEV_MODEL_IMPL="${LAZY_DEV_MODEL_IMPL:-$impl}"
+    LAZY_DEV_MODEL_REVIEW="${LAZY_DEV_MODEL_REVIEW:-$review}"
+    LAZY_DEV_MODEL_REVIEW2="${LAZY_DEV_MODEL_REVIEW2:-$review2}"
+    LAZY_DEV_MODELS_CONFIGURED=1
+    log_info "Models: ${LAZY_DEV_MODEL_IMPL} (impl), ${LAZY_DEV_MODEL_REVIEW} (review), ${LAZY_DEV_MODEL_REVIEW2} (review-2)"
+    return 0
+}
+
+detect_cursor_cli() {
+    if command -v cursor-agent &> /dev/null; then
+        USE_STANDALONE_CURSOR_AGENT=1
+        return 0
+    fi
+    if command -v cursor &> /dev/null; then
+        USE_STANDALONE_CURSOR_AGENT=0
+        return 0
+    fi
+    log_error "Cursor CLI not found. Please install cursor-agent or the Cursor CLI."
+    log_info "See: https://docs.cursor.com/cli"
+    return 1
+}
+
+apply_tracking_gitignore_policy() {
+    local tracked="$1"
+
+    if [ "$tracked" = "true" ]; then
+        write_lazy_dev_nested_gitignore
+    else
+        ensure_gitignore_entry ".lazy-dev/"
+    fi
+}
+
+init_lazy_dev_project() {
+    local tracked impl review review2
+
+    if [ ! -f "$SCRIPT_DIR/lazy.sh" ]; then
+        log_error "lazy-dev not installed at $LAZY_DEV_HOME"
+        log_info "Run install.sh from the lazy-dev repository: ./install.sh"
+        return 1
+    fi
+
+    require_git_repo || return 1
+    resolve_project_state_dir
+
+    if project_is_initialized; then
+        log_debug "Project already initialized at $STATE_DIR"
+        return 0
+    fi
+
+    if ! command -v jq &> /dev/null; then
+        log_error "jq not found. Please install it: brew install jq"
+        return 1
+    fi
+
+    tracked="${LAZY_DEV_INIT_TRACKED:-false}"
+    impl="${LAZY_DEV_INIT_MODEL_IMPL:-${LAZY_DEV_MODEL_IMPL:-composer-2.5}}"
+    review="${LAZY_DEV_INIT_MODEL_REVIEW:-${LAZY_DEV_MODEL_REVIEW:-composer-2.5}}"
+    review2="${LAZY_DEV_INIT_MODEL_REVIEW2:-${LAZY_DEV_MODEL_REVIEW2:-composer-2.5}}"
+
+    case "$tracked" in
+        true|false) ;;
+        *)
+            log_error "Invalid --tracked value: $tracked (expected true or false)"
+            return 1
+            ;;
+    esac
+
+    if [ -z "$impl" ] || [ -z "$review" ] || [ -z "$review2" ]; then
+        log_error "Init requires model IDs (pass --model-impl, --model-review, --model-review2 or run lazydev init)"
+        return 1
+    fi
+
+    write_project_config "$tracked" "$impl" "$review" "$review2"
+    mkdir -p "$STATE_DIR/features" "$STATE_DIR/rules/discovered"
+    apply_tracking_gitignore_policy "$tracked"
+
+    log_debug "Project state directory: $STATE_DIR"
+    return 0
+}
+
+ensure_lazy_dev_project() {
+    resolve_project_state_dir
+    if ! project_is_initialized; then
+        log_error "Project not initialized. Run: lazydev init"
+        return 1
+    fi
+    mkdir -p "$STATE_DIR/features" "$STATE_DIR/rules/discovered"
+    return 0
 }
 
 # Bind feature-scoped paths after STATE_DIR and FEATURE_NAME are known.
@@ -1507,7 +1663,7 @@ filter_infra_porcelain() {
         [ -z "$line" ] && continue
         path="${line:3}"
         case "$path" in
-            */.session-stats|*/.last-branch|*/archive/*)
+            .lazy-dev/**/.session-stats|*/.session-stats|*/.last-branch|*/archive/*|.lazy-dev/**/archive/*)
                 continue
                 ;;
         esac
@@ -1527,6 +1683,45 @@ output_file_has_result_event() {
     local output_file="$1"
     [ -f "$output_file" ] || return 1
     grep -qE '"type"[[:space:]]*:[[:space:]]*"result"' "$output_file" 2>/dev/null
+}
+
+# True when the given story has passes: true in the PRD.
+assigned_story_is_complete() {
+    local story_id="$1"
+    local prd_file="$2"
+    local passes
+    [ -n "$story_id" ] && [ -f "$prd_file" ] || return 1
+    passes=$(jq -r --arg id "$story_id" \
+        '[.userStories[]? | select(.id == $id) | .passes] | first // false' \
+        "$prd_file" 2>/dev/null || echo "false")
+    [ "$passes" = "true" ]
+}
+
+# True when the last result NDJSON event in OUTPUT_FILE reports success (is_error != true).
+output_file_result_is_success() {
+    local output_file="$1"
+    local result_line is_error
+    [ -f "$output_file" ] || return 1
+    result_line=$(grep '"type"[[:space:]]*:[[:space:]]*"result"' "$output_file" 2>/dev/null | tail -1)
+    [ -n "$result_line" ] || return 1
+    is_error=$(echo "$result_line" | jq -r 'try (.is_error // false) catch false' 2>/dev/null)
+    [ "$is_error" != "true" ]
+}
+
+# True when a watchdog kill should be treated as a successful iteration (handoff done).
+iteration_kill_is_recoverable_success() {
+    local kill_reason="$1"
+    local output_file="$2"
+    local story_id="$3"
+    local prd_file="$4"
+
+    if [ "$kill_reason" = "result_tail_hang" ] && output_file_result_is_success "$output_file"; then
+        return 0
+    fi
+    if [ "$kill_reason" = "handoff_complete" ] && assigned_story_is_complete "$story_id" "$prd_file"; then
+        return 0
+    fi
+    return 1
 }
 
 # Append a killed-iteration marker to progress.txt (timeout or interrupt).
@@ -1642,159 +1837,35 @@ validate_prd() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
-# MODEL CONFIGURATION (persisted in ~/.lazy-dev/config.env)
+# MODEL CONFIGURATION (per-project .lazy-dev/config, set at lazydev init)
 # ═══════════════════════════════════════════════════════════════════════════
 
 models_are_configured() {
     [ "${LAZY_DEV_MODELS_CONFIGURED:-0}" = "1" ]
 }
 
-# Populate global MODEL_IDS and MODEL_LABELS from cursor-agent --list-models
-list_available_models() {
-    local line id label list_cmd=()
-
-    if [ "${USE_STANDALONE_CURSOR_AGENT:-0}" = "1" ]; then
-        list_cmd=(cursor-agent)
-    else
-        list_cmd=(cursor agent)
-    fi
-
-    MODEL_IDS=()
-    MODEL_LABELS=()
-
-    while IFS= read -r line; do
-        [ -z "$line" ] && continue
-        [ "$line" = "Available models" ] && continue
-        id="${line%% - *}"
-        [ "$id" = "$line" ] && continue
-        [ "$id" = "auto" ] && continue
-        label="${line#* - }"
-        MODEL_IDS+=("$id")
-        MODEL_LABELS+=("$label")
-    done < <("${list_cmd[@]}" --list-models 2>/dev/null)
-
-    [ "${#MODEL_IDS[@]}" -gt 0 ]
-}
-
-prompt_model_choice() {
-    local category="$1"
-    local choice="" idx i
-
-    if ! list_available_models; then
-        log_error "Could not list available models from Cursor CLI."
-        return 1
-    fi
-
-    while true; do
-        echo "" >&2
-        echo "Select ${category} model:" >&2
-        for i in "${!MODEL_IDS[@]}"; do
-            printf '  %d) %s - %s\n' "$((i + 1))" "${MODEL_IDS[$i]}" "${MODEL_LABELS[$i]}" >&2
-        done
-        echo "" >&2
-        if [ -t 0 ]; then
-            read -r -p "> " choice || true
-        else
-            read -r -p "> " choice </dev/tty || true
-        fi
-
-        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#MODEL_IDS[@]}" ]; then
-            echo "${MODEL_IDS[$((choice - 1))]}"
-            return 0
-        fi
-
-        log_warn "Invalid selection. Enter a number between 1 and ${#MODEL_IDS[@]}." >&2
-    done
-}
-
-save_models_to_config() {
-    local impl="$1" review="$2" review2="$3"
-
-    mkdir -p "$(dirname "$CONFIG_FILE")"
-    cat > "$CONFIG_FILE" <<EOF
-LAZY_DEV_MODELS_CONFIGURED=1
-LAZY_DEV_MODEL_IMPL="$impl"
-LAZY_DEV_MODEL_REVIEW="$review"
-LAZY_DEV_MODEL_REVIEW2="$review2"
-EOF
-
-    LAZY_DEV_MODELS_CONFIGURED=1
-    LAZY_DEV_MODEL_IMPL="$impl"
-    LAZY_DEV_MODEL_REVIEW="$review"
-    LAZY_DEV_MODEL_REVIEW2="$review2"
-
-    log_success "Model configuration saved to $CONFIG_FILE"
-}
-
-# Initialize per-project state under ~/.lazy-dev/<project>/ (no git changes in consumer repo).
-bootstrap_lazy_dev_project() {
-    if [ ! -f "$SCRIPT_DIR/lazy.sh" ]; then
-        log_error "lazy-dev not installed at $LAZY_DEV_HOME"
-        log_info "Run install.sh from the lazy-dev repository: ./install.sh"
-        return 1
-    fi
-
-    resolve_project_state_dir
-    mkdir -p "$STATE_DIR/features" "$STATE_DIR/rules/discovered"
-    printf '%s\n' "$PROJECT_ROOT" > "$STATE_DIR/.project-root"
-    log_debug "Project state directory: $STATE_DIR"
-    return 0
-}
-
-# Interactive first-time model selection; saves ~/.lazy-dev/config.env before the agent loop starts.
-ensure_models_configured() {
-    local impl review review2
-
-    if models_are_configured; then
-        return 0
-    fi
-
-    if [ ! -t 0 ] && [ ! -c /dev/tty ]; then
-        log_warn "Models not configured and no TTY available — using defaults (set LAZY_DEV_MODEL_* env vars)"
-        return 0
-    fi
-
-    echo ""
-    log_info "First-time setup: select models for each story category."
-    log_info "Press Ctrl+C to cancel."
-
-    impl=$(prompt_model_choice "implementation") || return 1
-    review=$(prompt_model_choice "first code review") || return 1
-    review2=$(prompt_model_choice "second code review") || return 1
-
-    save_models_to_config "$impl" "$review" "$review2" || return 1
-
-    echo ""
-    log_info "Implementation: ${impl}"
-    log_info "First review:   ${review}"
-    log_info "Second review:  ${review2}"
-    echo ""
-
-    return 0
-}
-
 # Get the appropriate model for a specific story ID (type/suffix mapping)
 # Usage: model=$(get_model_for_story "$story_id")
 # Suffix order matters: *-REVIEW-2 is checked before *-REVIEW.
 # Returns:
-#   - gpt-5.3-codex for *-REVIEW (first code review)
-#   - gemini-3-pro for *-REVIEW-2 (second code review)
-#   - opus-4.6 for *IMPL-RECS, *IMPLEMENT-RECS, and all other stories
+#   - composer-2.5 for *-REVIEW (first code review) unless overridden in config
+#   - composer-2.5 for *-REVIEW-2 (second code review) unless overridden in config
+#   - composer-2.5 for *IMPL-RECS, *IMPLEMENT-RECS, and all other stories unless overridden
 get_model_for_story() {
     local story_id="$1"
 
     case "$story_id" in
         *-REVIEW-2)
-            echo "$LAZY_DEV_MODEL_REVIEW2"
+            echo "${LAZY_DEV_MODEL_REVIEW2:-composer-2.5}"
             ;;
         *-REVIEW)
-            echo "$LAZY_DEV_MODEL_REVIEW"
+            echo "${LAZY_DEV_MODEL_REVIEW:-composer-2.5}"
             ;;
         *IMPL-RECS|*IMPLEMENT-RECS)
-            echo "$LAZY_DEV_MODEL_IMPL"
+            echo "${LAZY_DEV_MODEL_IMPL:-composer-2.5}"
             ;;
         *)
-            echo "$LAZY_DEV_MODEL_IMPL"
+            echo "${LAZY_DEV_MODEL_IMPL:-composer-2.5}"
             ;;
     esac
 }
@@ -2008,14 +2079,28 @@ build_iteration_commit_message() {
     fi
 }
 
-# Prompt on main/master; otherwise stay on the current branch.
+# Checkout an existing branch or create it if missing.
+checkout_or_create_branch() {
+    local branch_name="$1"
+
+    if git -C "$PROJECT_ROOT" show-ref --verify --quiet "refs/heads/$branch_name"; then
+        log_info "Branch '$branch_name' already exists — checking out"
+        git -C "$PROJECT_ROOT" checkout "$branch_name" --quiet
+    else
+        log_info "Creating branch: $branch_name"
+        git -C "$PROJECT_ROOT" checkout -b "$branch_name" --quiet
+    fi
+    log_success "Now on branch: $branch_name"
+}
+
+# On main/master: use branchName from prd.json; prompt only when missing (legacy PRD).
 ensure_feature_branch() {
     if ! git -C "$PROJECT_ROOT" rev-parse --git-dir &>/dev/null; then
         log_error "Not a git repository. Please run from within a git project."
         exit 1
     fi
 
-    local current_branch branch_name main_branch
+    local current_branch branch_name main_branch prd_branch
     current_branch=$(git -C "$PROJECT_ROOT" branch --show-current 2>/dev/null || echo "")
     main_branch=$(detect_main_branch || echo "")
 
@@ -2025,25 +2110,28 @@ ensure_feature_branch() {
     fi
 
     if [ -n "$main_branch" ] && [ "$current_branch" = "$main_branch" ]; then
-        echo ""
-        echo "You are on $main_branch. Enter a branch name for this feature."
-        if [ -t 0 ]; then
-            read -rp "Branch name: " branch_name
+        prd_branch=$(jq -r '.branchName // empty' "$PRD_FILE" 2>/dev/null || echo "")
+        if [ -n "$prd_branch" ]; then
+            if ! validate_branch_name "$prd_branch"; then
+                log_error "Invalid branchName in PRD: '$prd_branch'"
+                exit 1
+            fi
+            log_info "Using branch from PRD: $prd_branch"
+            checkout_or_create_branch "$prd_branch"
         else
-            read -rp "Branch name: " branch_name </dev/tty
+            echo ""
+            echo "You are on $main_branch. Enter a branch name for this feature."
+            if [ -t 0 ]; then
+                read -rp "Branch name: " branch_name
+            else
+                read -rp "Branch name: " branch_name </dev/tty
+            fi
+            if ! validate_branch_name "$branch_name"; then
+                log_error "Invalid branch name: '$branch_name'"
+                exit 1
+            fi
+            checkout_or_create_branch "$branch_name"
         fi
-        if ! validate_branch_name "$branch_name"; then
-            log_error "Invalid branch name: '$branch_name'"
-            exit 1
-        fi
-        if git -C "$PROJECT_ROOT" show-ref --verify --quiet "refs/heads/$branch_name"; then
-            log_info "Branch '$branch_name' already exists — checking out"
-            git -C "$PROJECT_ROOT" checkout "$branch_name" --quiet
-        else
-            log_info "Creating branch: $branch_name"
-            git -C "$PROJECT_ROOT" checkout -b "$branch_name" --quiet
-        fi
-        log_success "Now on branch: $branch_name"
     else
         log_info "Staying on branch: $current_branch"
     fi
@@ -2371,6 +2459,7 @@ Review scope: run \`git diff ${merge_base}..HEAD\` to see all feature changes."
 - Feature: $FEATURE_NAME
 - Workspace/Project Root: $PROJECT_ROOT
 - Lazy-dev state directory: $STATE_DIR
+- Lazy-dev tracked in git: $(lazy_dev_tracked_label)
 - PRD: $LAZY_DEV_PRD_PATH
 - Progress: $LAZY_DEV_PROGRESS_PATH
 - Shared discovered patterns: $LAZY_DEV_DISCOVERED_PATH (capped injection below)
@@ -2411,12 +2500,7 @@ End your response when file updates are complete.${review_scope_block}"
     local CURSOR_ARGS=()
     
     # Determine which command to use
-    if [ -n "${LAZY_DEV_FAKE_AGENT:-}" ]; then
-        # Test hook: use the fake agent executable in place of the Cursor CLI
-        # (same flags + prompt argument; still goes through tee | parse_agent_output)
-        CURSOR_CMD="$LAZY_DEV_FAKE_AGENT"
-        log_info "Using LAZY_DEV_FAKE_AGENT executable: $CURSOR_CMD"
-    elif [ "${USE_STANDALONE_CURSOR_AGENT:-0}" = "1" ]; then
+    if [ "${USE_STANDALONE_CURSOR_AGENT:-0}" = "1" ]; then
         CURSOR_CMD="cursor-agent"
     else
         CURSOR_CMD="cursor"
@@ -2454,14 +2538,6 @@ End your response when file updates are complete.${review_scope_block}"
     
     # Debug: show exact command being run (verbose mode only)
     log_debug "Executing: $CURSOR_CMD ${CURSOR_ARGS[*]} <...prompt...>"
-
-    if [ "${LAZY_DEV_PRINT_CONTEXT:-}" = "1" ]; then
-        echo "" >&2
-        echo "========== LAZY_DEV_PRINT_CONTEXT (start) ==========" >&2
-        printf '%s\n' "$CONTEXT" >&2
-        echo "========== LAZY_DEV_PRINT_CONTEXT (end) ==========" >&2
-        echo "" >&2
-    fi
 
     # Run cursor-agent with the prompt
     # Use the global OUTPUT_FILE (managed by main() trap) for raw NDJSON capture
@@ -2510,6 +2586,7 @@ End your response when file updates are complete.${review_scope_block}"
     local last_output_size=0
     local last_output_change_time=$(date +%s)
     local result_seen_time=0
+    local handoff_seen_time=0
     
     while kill -0 "$PIPELINE_PID" 2>/dev/null; do
         local elapsed=$(($(date +%s) - wait_start))
@@ -2527,7 +2604,10 @@ End your response when file updates are complete.${review_scope_block}"
         fi
         if [ "$current_output_size" != "$last_output_size" ]; then
             last_output_size=$current_output_size
-            last_output_change_time=$(date +%s)
+            # After result is seen, ignore post-result dribble for stall detection
+            if [ "$result_seen_time" -eq 0 ]; then
+                last_output_change_time=$(date +%s)
+            fi
             if output_file_has_result_event "$OUTPUT_FILE"; then
                 if [ "$result_seen_time" -eq 0 ]; then
                     result_seen_time=$(date +%s)
@@ -2536,21 +2616,39 @@ End your response when file updates are complete.${review_scope_block}"
         else
             local stall_elapsed=$(($(date +%s) - last_output_change_time))
 
-            # Result received but pipeline still alive — cursor-cli tail hang
-            if [ "$result_seen_time" -gt 0 ]; then
-                local result_tail_elapsed=$(($(date +%s) - result_seen_time))
-                if [ "$result_tail_elapsed" -ge "$RESULT_TAIL_HANG_TIMEOUT" ]; then
-                    log_warn "Result event received but pipeline still alive (${result_tail_elapsed}s) - killing process"
-                    timed_out=1
-                    kill_reason="result_tail_hang"
-                    break
-                fi
-            fi
-
-            if [ "$stall_elapsed" -ge "$STALL_TIMEOUT" ]; then
+            if [ "$result_seen_time" -eq 0 ] && [ "$stall_elapsed" -ge "$STALL_TIMEOUT" ]; then
                 log_warn "Stall detected (no output for ${stall_elapsed}s) - killing process"
                 kill_reason="stall"
                 timed_out=1
+                break
+            fi
+        fi
+
+        # Result received but pipeline still alive — cursor-cli tail hang
+        # Checked every poll (not only when output is silent) so trailing NDJSON
+        # after the result event cannot defer this watchdog indefinitely.
+        if [ "$result_seen_time" -gt 0 ]; then
+            local result_tail_elapsed=$(($(date +%s) - result_seen_time))
+            if [ "$result_tail_elapsed" -ge "$RESULT_TAIL_HANG_TIMEOUT" ]; then
+                log_warn "Result event received but pipeline still alive (${result_tail_elapsed}s) - killing process"
+                timed_out=1
+                kill_reason="result_tail_hang"
+                break
+            fi
+        fi
+
+        # PRD handoff: assigned story flipped to passes:true but cursor-cli never exits
+        # (common when agent stops after file updates but session keeps thinking).
+        if [ "$handoff_seen_time" -eq 0 ] && assigned_story_is_complete "$next_story_id" "$PRD_FILE"; then
+            handoff_seen_time=$(date +%s)
+            log_debug "Assigned story ${next_story_id} is passes:true — handoff timer started"
+        fi
+        if [ "$handoff_seen_time" -gt 0 ]; then
+            local handoff_elapsed=$(($(date +%s) - handoff_seen_time))
+            if [ "$handoff_elapsed" -ge "$HANDOFF_COMPLETE_TIMEOUT" ]; then
+                log_info "Story ${next_story_id} handoff complete (passes:true in PRD, ${handoff_elapsed}s) — ending iteration"
+                timed_out=1
+                kill_reason="handoff_complete"
                 break
             fi
         fi
@@ -2560,7 +2658,17 @@ End your response when file updates are complete.${review_scope_block}"
     done
     
     if [ "$timed_out" -eq 1 ]; then
-        log_warn "Stall recovery: killed hung agent (reason: ${kill_reason:-timeout}) — continuing loop"
+        case "$kill_reason" in
+            handoff_complete)
+                log_info "Ending iteration after PRD handoff signal"
+                ;;
+            result_tail_hang)
+                log_warn "Ending iteration after cursor-cli tail hang"
+                ;;
+            *)
+                log_warn "Stall recovery: killed hung agent (reason: ${kill_reason:-timeout}) — continuing loop"
+                ;;
+        esac
         kill_pipeline_safely "$PIPELINE_PID" "${kill_reason:-timeout}"
     fi
     
@@ -2569,7 +2677,16 @@ End your response when file updates are complete.${review_scope_block}"
     else
         exit_code=124  # Standard timeout exit code
         local kill_duration=$(($(date +%s) - start_time))
-        append_killed_iteration_marker "$iteration" "${kill_reason:-timeout}" "$kill_duration"
+        if iteration_kill_is_recoverable_success "$kill_reason" "$OUTPUT_FILE" "$next_story_id" "$PRD_FILE"; then
+            exit_code=0
+            if [ "$kill_reason" = "handoff_complete" ]; then
+                log_info "Recovered from agent session hang after PRD handoff"
+            else
+                log_info "Recovered from cursor-cli tail hang after successful result"
+            fi
+        else
+            append_killed_iteration_marker "$iteration" "${kill_reason:-timeout}" "$kill_duration"
+        fi
     fi
     LAZY_DEV_ITERATION_ACTIVE=0
     PIPELINE_PID=""
@@ -2639,6 +2756,10 @@ main() {
     trap handle_interrupt INT QUIT HUP
     trap cleanup EXIT TERM
 
+    ensure_lazy_dev_project || exit 1
+    load_models_from_project_config || exit 1
+    set_feature_paths
+
     # Start caffeinate to prevent system sleep (keeps network connections alive)
     # -d = prevent display sleep, -i = prevent idle sleep
     if command -v caffeinate &> /dev/null; then
@@ -2655,11 +2776,7 @@ main() {
     log_debug "PRD file: $PRD_FILE"
     log_debug "Prompt file: $PROMPT_FILE"
 
-    bootstrap_lazy_dev_project || exit 1
-    set_feature_paths
-
     verify_setup
-    ensure_models_configured || exit 1
 
     # Log initial resource state for comparison (debug only)
     if [ "$VERBOSE" = "1" ]; then
@@ -2821,7 +2938,7 @@ main() {
             report_stuck_and_exit "$PRD_FILE"
         fi
 
-        # Silently continue to next iteration
+        log_info "Story ${LAST_ASSIGNED_STORY_ID} handoff complete — starting iteration $((iteration + 1))"
         iteration=$((iteration + 1))
         sleep 2
     done
@@ -2829,12 +2946,29 @@ main() {
 
 # Only run main when executed directly (not when sourced for function tests)
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-    if [[ "${LAZY_DEV_BOOTSTRAP_ONLY:-0}" = "1" ]]; then
-        bootstrap_lazy_dev_project || exit 1
-        if [[ "${LAZY_DEV_PRINT_STATE_DIR:-0}" = "1" ]]; then
-            echo "$STATE_DIR"
-        fi
+    if [[ "${LAZY_DEV_INIT_ONLY:-0}" = "1" ]]; then
+        init_lazy_dev_project || exit 1
         exit 0
+    fi
+    if [[ "${LAZY_DEV_PRINT_STATE_DIR:-0}" = "1" ]]; then
+        resolve_project_state_dir
+        if ! project_is_initialized; then
+            log_error "Project not initialized. Run: lazydev init"
+            exit 1
+        fi
+        echo "$STATE_DIR"
+        exit 0
+    fi
+    if [[ "${LAZY_DEV_CHECK_INITIALIZED:-0}" = "1" ]]; then
+        resolve_project_state_dir
+        if project_is_initialized; then
+            exit 0
+        fi
+        exit 1
+    fi
+    if [ "${LAZY_DEV_INVOKED_BY_LAZYDEV:-0}" != "1" ]; then
+        echo "Use lazydev to implement features (option 2: Implement a feature)." >&2
+        exit 1
     fi
     main "$@"
 fi

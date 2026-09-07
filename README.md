@@ -6,7 +6,9 @@ An autonomous agent loop framework for Cursor. Runs multiple agent iterations to
 
 **Platform:** macOS and Linux only.
 
-## Install (once per machine)
+## Quick start
+
+### 1. Install (once per machine)
 
 ```bash
 ./install.sh
@@ -14,17 +16,30 @@ An autonomous agent loop framework for Cursor. Runs multiple agent iterations to
 
 This installs the toolkit to `~/.lazy-dev/`, adds `lazydev` to `~/.local/bin/`, and links the `generate-prd` skill into `~/.cursor/skills/`.
 
-Model preferences are stored in `~/.lazy-dev/config.env` (created on first implement run).
+### 2. Initialize your project
 
-## Usage (per project)
+```bash
+cd your-repo
+lazydev
+```
 
-From any git repository:
+If the project is not set up yet, `lazydev` automatically runs init: it creates `.lazy-dev/`, prompts for git tracking and model preferences, then exits.
+
+**Commit all init changes before continuing.** Init leaves the working tree dirty (`.lazy-dev/config` and possibly `.gitignore`). Review with `git status`, then commit so your working tree is clean.
+
+You can also run init explicitly:
+
+```bash
+lazydev init
+```
+
+### 3. Day-to-day use
+
+Once init is committed and `git status` is clean:
 
 ```bash
 lazydev
 ```
-
-On first run, lazy-dev creates project state under `~/.lazy-dev/<repo-name>/`. **Nothing is written or committed inside your repository** for bootstrap — your `main` branch stays untouched.
 
 ```
 Lazy Dev
@@ -34,38 +49,46 @@ Lazy Dev
 q) Quit
 ```
 
-1. **Create new feature PRD** — interactive `cursor-agent` session with the `generate-prd` skill. Writes `~/.lazy-dev/<repo-name>/features/<name>/prd.json`.
-2. **Implement a feature** — runs the agent loop until all stories pass (or the loop stops on budget/stuck/max-iterations).
+1. **Create new feature PRD** — interactive `cursor-agent` session with the `generate-prd` skill. Clarifies requirements, then writes `.lazy-dev/features/<name>/prd.json`.
+2. **Implement a feature** — runs the agent loop until all stories pass (auto-resumes across sessions).
 
-You can also run the loop directly:
+## Responsibility matrix
 
-```bash
-lazy.sh <feature-name>
-```
+| Component | Responsibility |
+|---|---|
+| `install.sh` | One-time global install to `~/.lazy-dev/` |
+| `lazydev init` | Per-repo setup: git tracking + model selection |
+| `lazydev` | Sole user entry point: create PRD or implement a feature |
+| `generate-prd` skill | Clarify requirements, write PRD files at project level |
+| `lazy.sh` | Internal agent-loop engine (not invoked directly) |
 
 ## Directory layout
 
-**Global (`~/.lazy-dev/`)** — toolkit + per-project state:
+**Global (`~/.lazy-dev/`)** — toolkit only:
 
 ```
 ~/.lazy-dev/
 ├── lazy.sh
 ├── lazydev
 ├── prompt.md
-├── config.env              # model preferences (first implement run)
 ├── skills/
-├── rules/
-└── <repo-name>/            # per-project state (not in your git repo)
-    ├── .project-root       # absolute path to the git repo root
-    ├── features/
-    │   └── <feature-name>/
-    │       ├── prd.json
-    │       └── progress.txt
-    └── rules/
-        └── discovered/
+└── rules/
 ```
 
-If two repos share the same folder name, lazy-dev appends a short hash suffix (e.g. `my-app-a1b2c3d4`).
+**Per project (`<repo>/.lazy-dev/`)** — state and configuration:
+
+```
+.lazy-dev/
+├── config                  # tracked preference + model mapping (from lazydev init)
+├── features/
+│   └── <feature-name>/
+│       ├── prd.json
+│       └── progress.txt
+└── rules/
+    └── discovered/
+```
+
+By default, `lazydev init` adds `.lazy-dev/` to `.gitignore` so PRD/progress stay local. Choose to track it in git during the init prompts if you want team-shared PRDs.
 
 ## How It Works
 
@@ -80,9 +103,9 @@ If two repos share the same folder name, lazy-dev appends a short hash suffix (e
 │       │              │              │                       │
 │       ▼              ▼              ▼                       │
 │  ┌─────────────────────────────────────────┐               │
-│  │  Feature State (~/.lazy-dev/<repo>/)    │               │
-│  │  • features/<name>/prd.json             │               │
-│  │  • features/<name>/progress.txt         │               │
+│  │  Feature State (.lazy-dev/features/)    │               │
+│  │  • <name>/prd.json                      │               │
+│  │  • <name>/progress.txt                  │               │
 │  └─────────────────────────────────────────┘               │
 │       │              │              │                       │
 │       ▼              ▼              ▼                       │
@@ -97,7 +120,7 @@ Each iteration:
 1. Reads the feature's PRD and picks the highest priority incomplete story
 2. Breaks the story into atomic sub-tasks
 3. Implements each sub-task with verification
-4. Commits **source code changes** in the consumer repo and updates state under `~/.lazy-dev/`
+4. Commits **source code changes** in the consumer repo (and `.lazy-dev/` when tracked)
 5. Continues until all stories are complete
 
 ## Git Safety Policy
@@ -109,7 +132,7 @@ Each iteration:
 ║  ✅ ALLOWED: git commit (implementation changes in consumer repo)         ║
 ║  ❌ FORBIDDEN: git push (blocked during agent sessions)                   ║
 ║                                                                           ║
-║  PRD/progress state: ~/.lazy-dev/<repo>/ (outside consumer git repo)      ║
+║  PRD/progress state: .lazy-dev/ (gitignored by default at init)          ║
 ║  Agent loop: requires clean tree between iterations (repo only)           ║
 ║  Runner commits story source changes with git add -A                      ║
 ╚═══════════════════════════════════════════════════════════════════════════╝
