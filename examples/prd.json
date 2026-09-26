@@ -54,13 +54,13 @@
         "Check for performance issues (unnecessary re-renders, missing memoization)",
         "Verify accessibility and error handling",
         "Ensure all tests pass",
-        "Document all findings and recommendations in review-gpt.md file in the feature directory",
+        "Document all findings and recommendations in review-1.md file in the feature directory",
         "Build/typecheck passes"
       ],
       "priority": 997,
       "passes": false,
       "attempts": 0,
-      "notes": "Output findings to .lazy-dev/features/<feature>/review-gpt.md (see Feature Context for exact path) - this file will be read by US-IMPLEMENT-RECS"
+      "notes": "Output findings to .lazy-dev/features/<feature>/review-1.md (see Feature Context for exact path) - this file will be read by US-IMPL-RECS"
     },
     {
       "id": "US-REVIEW-2",
@@ -71,21 +71,21 @@
         "Check for security vulnerabilities and edge cases",
         "Verify error handling and resilience patterns",
         "Look for architectural improvements and best practices",
-        "Document all findings and recommendations in review-gemini.md file in the feature directory",
+        "Document all findings and recommendations in review-2.md file in the feature directory",
         "Build/typecheck passes"
       ],
       "priority": 998,
       "passes": false,
       "attempts": 0,
-      "notes": "Output findings to .lazy-dev/features/<feature>/review-gemini.md (see Feature Context for exact path) - this file will be read by US-IMPLEMENT-RECS"
+      "notes": "Output findings to .lazy-dev/features/<feature>/review-2.md (see Feature Context for exact path) - this file will be read by US-IMPL-RECS"
     },
     {
-      "id": "US-IMPLEMENT-RECS",
+      "id": "US-IMPL-RECS",
       "title": "Implement code review recommendations",
       "description": "As a developer, I need to implement the recommendations and fixes identified during both code reviews.",
       "acceptanceCriteria": [
-        "Read review-gpt.md for first review findings",
-        "Read review-gemini.md for second review findings",
+        "Read review-1.md for first review findings",
+        "Read review-2.md for second review findings",
         "Synthesize and prioritize recommendations from both reviews",
         "Address all critical and high-priority issues from both reviews",
         "Re-verify all previous acceptance criteria still pass",
@@ -95,7 +95,7 @@
       "priority": 999,
       "passes": false,
       "attempts": 0,
-      "notes": "Read both review-gpt.md and review-gemini.md in the feature directory (paths in Feature Context) to gather all recommendations"
+      "notes": "Read both review-1.md and review-2.md in the feature directory (paths in Feature Context) to gather all recommendations"
     }
   ]
 }

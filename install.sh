@@ -17,71 +17,83 @@ LAZY_DEV_HOME="${LAZY_DEV_HOME:-$HOME/.lazy-dev}"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 LAZY_DEV_HOME="$(cd "$LAZY_DEV_HOME" 2>/dev/null && pwd -P || echo "$LAZY_DEV_HOME")"
 LOCAL_BIN="${HOME}/.local/bin"
-CURSOR_SKILL="${HOME}/.cursor/skills/generate-prd"
-INSTALL_IN_PLACE=0
+MARKER=".lazy-dev-install"
+LEGACY_SKILL_LINK="${HOME}/.cursor/skills/generate-prd"
 
-if [ "$SOURCE_DIR" = "$LAZY_DEV_HOME" ]; then
-    INSTALL_IN_PLACE=1
+if [ "$LAZY_DEV_HOME" = "$SOURCE_DIR" ]; then
+    echo "ERROR: LAZY_DEV_HOME must differ from the source checkout ($SOURCE_DIR)." >&2
+    exit 1
 fi
 
-install_tree() {
-    local name="$1"
-    if [ "$INSTALL_IN_PLACE" = "1" ]; then
-        return 0
-    fi
-    rm -rf "${LAZY_DEV_HOME:?}/${name}"
-    cp -R "${SOURCE_DIR}/${name}" "${LAZY_DEV_HOME}/${name}"
-}
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+    echo "ERROR: Node.js 22.13+ and npm are required." >&2
+    exit 1
+fi
+
+if ! node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=13)?0:1)'; then
+    echo "ERROR: Node.js 22.13+ is required (found $(node --version))." >&2
+    exit 1
+fi
 
 echo "Installing lazy-dev to ${LAZY_DEV_HOME}..."
-if [ "$INSTALL_IN_PLACE" = "1" ]; then
-    echo "  (in-place: source tree is the install target; skipping file copy)"
+
+(
+    cd "$SOURCE_DIR"
+    npm ci
+    npm run build
+)
+
+# Only wipe a directory that a previous install created. Legacy installs are
+# recognised by their dist/cli.js or lazy.sh.
+if [ -e "$LAZY_DEV_HOME" ]; then
+    if [ -f "$LAZY_DEV_HOME/$MARKER" ] || [ -f "$LAZY_DEV_HOME/dist/cli.js" ] || [ -f "$LAZY_DEV_HOME/lazy.sh" ]; then
+        rm -rf "${LAZY_DEV_HOME:?}"
+    else
+        echo "ERROR: $LAZY_DEV_HOME exists but is not a lazy-dev install. Refusing to delete it." >&2
+        echo "       Set LAZY_DEV_HOME to another path or remove it yourself." >&2
+        exit 1
+    fi
 fi
 
 mkdir -p "$LAZY_DEV_HOME"
-
-if [ "$INSTALL_IN_PLACE" != "1" ]; then
-    for file in lazy.sh lazydev prompt.md; do
-        cp "${SOURCE_DIR}/${file}" "${LAZY_DEV_HOME}/${file}"
-        chmod +x "${LAZY_DEV_HOME}/${file}"
-    done
-
-    for dir in skills rules examples; do
-        install_tree "$dir"
-    done
-else
-    chmod +x "${LAZY_DEV_HOME}/lazy.sh" "${LAZY_DEV_HOME}/lazydev" 2>/dev/null || true
-fi
-
-mkdir -p "$LOCAL_BIN"
-ln -sf "${LAZY_DEV_HOME}/lazydev" "${LOCAL_BIN}/lazydev"
-
-mkdir -p "$(dirname "$CURSOR_SKILL")"
-ln -sfn "${LAZY_DEV_HOME}/skills/generate-prd" "$CURSOR_SKILL"
+cp -R "$SOURCE_DIR/dist" "$SOURCE_DIR/skills" "$SOURCE_DIR/rules" "$SOURCE_DIR/examples" "$LAZY_DEV_HOME/"
+cp "$SOURCE_DIR/prompt.md" "$SOURCE_DIR/package.json" "$SOURCE_DIR/package-lock.json" "$LAZY_DEV_HOME/"
+(
+    cd "$LAZY_DEV_HOME"
+    npm ci --omit=dev --no-audit --no-fund
+)
+touch "$LAZY_DEV_HOME/$MARKER"
+chmod +x "${LAZY_DEV_HOME}/dist/cli.js"
 
 if [ ! -s "${LAZY_DEV_HOME}/skills/generate-prd/SKILL.md" ]; then
     echo "ERROR: skills/generate-prd/SKILL.md is missing or empty. Cannot install." >&2
     exit 1
 fi
 
+mkdir -p "$LOCAL_BIN"
+ln -sf "${LAZY_DEV_HOME}/dist/cli.js" "${LOCAL_BIN}/lazydev"
+
+# The PRD skill is now inlined by the CLI; remove the symlink older installs created.
+if [ -L "$LEGACY_SKILL_LINK" ] && [ "$(readlink "$LEGACY_SKILL_LINK")" = "${LAZY_DEV_HOME}/skills/generate-prd" ]; then
+    rm "$LEGACY_SKILL_LINK"
+fi
+
 echo ""
 echo "Installed lazy-dev to ${LAZY_DEV_HOME}"
 echo "  CLI: ${LOCAL_BIN}/lazydev"
-echo "  Skill: ${CURSOR_SKILL}"
 echo ""
 
 case ":${PATH}:" in
     *":${LOCAL_BIN}:"*) ;;
     *)
-        echo "Add ${LOCAL_BIN} to your PATH if lazydev is not found:"
+        echo "Add ${LOCAL_BIN} to your PATH:"
         echo "  export PATH=\"${LOCAL_BIN}:\$PATH\""
         echo ""
         ;;
 esac
 
 echo "Next steps:"
-echo "  1. cd your-git-repo"
-echo "  2. lazydev          # auto-inits the project if needed"
-echo "  3. git add … && git commit …   # commit init changes; tree must be clean"
-echo "  4. lazydev          # create a PRD or implement a feature"
+echo "  1. lazydev init      # once per machine: API key, default models, health check"
+echo "  2. cd your-git-repo"
+echo "  3. lazydev           # first run sets up the repo, then create a PRD or implement one"
 echo ""

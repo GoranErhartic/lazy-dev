@@ -6,10 +6,10 @@ Shared rules that apply to all features in the agent loop.
 
 ```
 rules/
-├── agent-loop.mdc         # Core iteration behavior (injected by lazy.sh)
-├── task-breakdown.mdc     # Story decomposition (injected by lazy.sh)
-├── quality-gates.mdc      # Verification checklists (injected by lazy.sh)
-├── pattern-discovery.mdc  # Capturing reusable patterns (injected by lazy.sh)
+├── agent-loop.mdc         # Core iteration behavior (injected by the TypeScript runner)
+├── task-breakdown.mdc     # Story decomposition (injected by the TypeScript runner)
+├── quality-gates.mdc      # Verification checklists (injected by the TypeScript runner)
+├── pattern-discovery.mdc  # Capturing reusable patterns (injected by the TypeScript runner)
 └── discovered/            # Cross-feature discovered patterns
     └── .gitkeep
 ```
@@ -19,7 +19,7 @@ rules/
 ### Core Protocol (injected by the loop, `alwaysApply: false`)
 
 These are set to `alwaysApply: false` so Cursor does NOT auto-load them into
-regular chats. `lazy.sh` inlines the full text of each file into the agent prompt
+regular chats. `src/engine/loop.ts` inlines the full text of each file into the agent prompt
 ("Injected Protocol") on every iteration, so the agent loop follows them without
 relying on Cursor's rule discovery. In Cursor they remain available as manual
 rules (mention with `@` if you ever want them in a normal chat).
@@ -31,7 +31,7 @@ rules (mention with `@` if you ever want them in a normal chat).
 
 ### Project Patterns
 
-Project-specific patterns (architecture, testing, security, etc.) live in **your project's** `.cursor/rules/patterns/` — not inside lazy-dev's `rules/` tree. Maintain them separately from lazy-dev; agents consult them during implementation (see `prompt.md` and the main [README](../README.md#rules-system) for the full loading order).
+Project-specific patterns (architecture, testing, security, etc.) live in **your project's** `.cursor/rules/patterns/` — not inside lazy-dev's `rules/` tree. Maintain them separately from lazy-dev; agents consult them during implementation (see `prompt.md` for the full loading order).
 
 ### Discovered Patterns
 

@@ -22,8 +22,10 @@ This session is **PRD generation only**. Even if the user's description says "im
 - **NEVER** set `passes: true` or increment `attempts` on any story in `prd.json`
 - **NEVER** run build, test, lint, or type-check as part of this session
 - **ONLY** write files under `<state-dir>/features/<feature-name>/` (`prd.json`, `progress.txt`)
-- **ONLY** git change allowed: branch checkout (when on main/master)
-- Implementation is done **later** by the user via `lazydev` → option **2** (Implement a feature)
+- **NEVER** run git commands. The lazy-dev runner creates and checks out `branchName` when implementation starts
+- Implementation is done **later** by the user from the `lazydev` home screen (select the feature, press enter)
+
+When the `ask_user` tool is available (the lazy-dev terminal UI provides it), ask **every** question through it, one question per call, with the lettered options as the `options` array. Do not end your turn to wait for answers.
 
 If you catch yourself writing a component, editing app code, or marking a story complete — **stop immediately**. You are in the wrong mode.
 
@@ -77,6 +79,8 @@ Ask questions **only for what is genuinely unclear**. The number of questions de
    C. [Option based on context]
    D. Other: [please specify]
 ```
+
+With the `ask_user` tool, send each numbered question as its own call: `question` is the question text and `options` holds the A–C answers (the UI adds "Other" automatically). Use it the same way for the Requirements Summary confirmation (`options: ["Yes, generate the PRD", "No, I have changes"]`).
 
 ### Round 2+: Follow-Up Questions
 
@@ -222,7 +226,7 @@ While the output format is `prd.json`, mentally structure the feature as:
 **When no Jira task is provided:**
 - Use `US-001`, `US-002`, etc. for sequential numbering
 
-**Important:** Story IDs are for internal PRD tracking only. During implementation (via `lazydev` option 2), the runner commits using the Jira task ID (e.g., `feat: (MED-523) Add priority field`), NOT granular story IDs like `MED-523-001`. Do not commit during PRD generation — the user commits when ready.
+**Important:** Story IDs are for internal PRD tracking only. During implementation, the runner commits using the Jira task ID (e.g., `feat: (MED-523) Add priority field`), NOT granular story IDs like `MED-523-001`. Do not commit during PRD generation — the user commits when ready.
 
 Stories should be independent enough to be worked on in separate agent iterations.
 
@@ -232,7 +236,7 @@ Stories should be independent enough to be worked on in separate agent iteration
 - Priority 3: Nice-to-have, polish, or optional enhancements
 - Priority 997: Auto-generated first code review step (US-REVIEW)
 - Priority 998: Auto-generated second code review step (US-REVIEW-2)
-- Priority 999: Auto-generated implement recommendations step (US-IMPLEMENT-RECS, always last)
+- Priority 999: Auto-generated implement recommendations step (US-IMPL-RECS, always last)
 
 ### ⚠️ CRITICAL: Unique Priorities Required
 
@@ -267,55 +271,38 @@ Every PRD automatically includes three final user stories for quality assurance.
 **Without Jira:**
 1. **US-REVIEW** (Priority 997): First code review
 2. **US-REVIEW-2** (Priority 998): Second code review
-3. **US-IMPLEMENT-RECS** (Priority 999): Implement recommendations
+3. **US-IMPL-RECS** (Priority 999): Implement recommendations
 
 Each review agent outputs findings to an independent file in the feature directory. The implementation agent reads both files to synthesize and implement the combined recommendations.
 
 **Path placeholders:** Review output paths below use `<feature>` as a placeholder. Substitute the actual feature name into these paths when generating the PRD.
 
-The implementation loop (via `lazydev` option 2) runs until all stories have `passes: true`. It auto-resumes if a session ends before completion.
+The implementation loop (started from the `lazydev` home screen) runs until all stories have `passes: true`. It auto-resumes if a session ends before completion.
 
 ---
 
 ## PHASE 4: Create PRD File
 
 1. **Determine Feature Location and Jira Task:**
-   * Ask the user for the feature name/identifier (for folder naming and branch suggestions).
+   * **Feature name:** use the one given in the session message (lazy-dev asks for it before the session starts). Only ask for one if none was provided.
+   * **State directory:** use the path from the session message. If absent, resolve as `<repo-root>/.lazy-dev`.
    * **Check if user mentioned a Jira task number** (e.g., MED-123, PROJ-456) in their initial request or during clarification.
    * If Jira task was mentioned, capture it for branch naming and commit messages.
 
-2. **Git Branch Setup (before writing any files):**
-   * **Require a clean working tree.** If `git status --porcelain` is not empty, stop and ask the user to commit or stash changes first.
-   * **Prerequisite:** The user must have run `lazydev init` so `.lazy-dev/config` exists in the repo.
-   * **State directory:** Use the path from the user message (`Lazy-dev state directory for this project: ...`). If absent, resolve as `<repo-root>/.lazy-dev` (git workspace root + `/.lazy-dev`).
-   * Detect the current branch: `git branch --show-current`
-   * Detect main branch name (`main` or `master`).
-
-   **If on `main` or `master`:**
-   * **Ask the user for the branch name** (do not assume). Suggest a default they can accept or edit:
+2. **Branch Name (recorded only, never created here):**
+   * Propose a `branchName` and confirm it with the user (via `ask_user` when available), offering the default first:
      - Without Jira: `feature/<feature-name>` or `fix/<feature-name>` (kebab-case)
      - With Jira: `feature/<JIRA-ID>_<feature-name>` or `fix/<JIRA-ID>_<feature-name>`
-   * Validate the name with `git check-ref-format --branch "<name>"`.
-   * Create and check out the branch:
-     ```bash
-     # If branch does not exist yet:
-     git checkout -b <branch-name>
-     # If branch already exists:
-     git checkout <branch-name>
-     ```
-   * Record this name as `branchName` in `prd.json`.
+   * Record the confirmed name as `branchName` in `prd.json`.
+   * **Do not run git.** When implementation starts on `main`/`master`, the runner creates or checks out `branchName`; on any other branch it stays where it is.
 
-   **If already on a feature branch (not main/master):**
-   * **Stay on the current branch** — do not ask for a new branch name.
-   * Record the current branch as `branchName` in `prd.json`.
-
-   **Examples of suggested branch names (on main only):**
+   **Examples of branch names:**
    - Without Jira: `feature/task-priority`
    - With Jira MED-123: `feature/MED-123_task-priority`
    - Bug fix with Jira: `fix/MED-456_login-validation`
 
 3. **Create Feature Directory:**
-   * Create folder: `<state-dir>/features/<feature-name>/` (where `<state-dir>` is the lazy-dev state directory for this project, typically `~/.lazy-dev/<repo-name>/`)
+   * Create folder: `<state-dir>/features/<feature-name>/` (typically `<repo-root>/.lazy-dev/features/<feature-name>/`)
    * This folder will contain:
      - `prd.json` - The PRD file
      - `progress.txt` - Will be created during implementation
@@ -395,7 +382,7 @@ The implementation loop (via `lazydev` option 2) runs until all stories have `pa
         "notes": "Auto-generated second review step. Output findings to <state-dir>/features/<feature>/review-2.md"
       },
       {
-        "id": "[JIRA-123-IMPL-RECS or US-IMPLEMENT-RECS if no Jira]",
+        "id": "[JIRA-123-IMPL-RECS or US-IMPL-RECS if no Jira]",
         "title": "Implement code review recommendations",
         "description": "As a developer, I need to implement the recommendations and fixes identified during both code reviews.",
         "acceptanceCriteria": [
@@ -416,7 +403,7 @@ The implementation loop (via `lazydev` option 2) runs until all stories have `pa
   }
   ```
    
-   **Note:** The `US-REVIEW`, `US-REVIEW-2`, and `US-IMPLEMENT-RECS` stories are **required** in every PRD. Add them with priorities 997, 998, and 999 respectively to ensure they always run last. Each review story outputs findings to its own file (`review-1.md` or `review-2.md`) for independent analysis, and the implementation story reads both files to synthesize recommendations.
+   **Note:** The `US-REVIEW`, `US-REVIEW-2`, and `US-IMPL-RECS` stories are **required** in every PRD. Add them with priorities 997, 998, and 999 respectively to ensure they always run last. Each review story outputs findings to its own file (`review-1.md` or `review-2.md`) for independent analysis, and the implementation story reads both files to synthesize recommendations.
 
    **Runner-owned fields:** Include `"attempts": 0` on every story (defaults to 0 if omitted). The runner increments `attempts` after failed iterations and sets `"blocked": true` after 3 failures — agents must never set `blocked`.
 
@@ -447,12 +434,12 @@ The implementation loop (via `lazydev` option 2) runs until all stories have `pa
 6. **Verify files:**
    * PRD files live under `<repo>/.lazy-dev/features/<feature-name>/`.
    * Check `Lazy-dev tracked in git` from the user message (or read `.lazy-dev/config` → `tracked`):
-     - **`tracked: false` (default):** Do not `git add` or commit `prd.json` / `progress.txt`. Branch checkout may be the only git change.
-     - **`tracked: true`:** PRD files may appear in `git status`; do not auto-commit unless the user asks.
+     - **`tracked: false` (default):** Do not `git add` or commit `prd.json` / `progress.txt`. Make no git changes at all.
+     - **`tracked: true`:** PRD files may appear in `git status`; do not commit them (lazydev offers to commit when the session ends).
    * Confirm both files exist and `prd.json` validates.
    * All stories must have `passes: false` and `attempts: 0` — you are not implementing anything in this session.
 
-   When the user later runs `lazydev` and chooses option **2** (Implement a feature), the runner expects a clean tree and will use `branchName` from the PRD automatically.
+   When the user later implements the feature from the `lazydev` home screen, the runner expects a clean tree and will use `branchName` from the PRD automatically.
 
 ---
 
@@ -609,7 +596,7 @@ After both reviews, **immediately apply all recommended changes** to the PRD:
 
 3. **Next Steps Guidance:**
    * Inform the user that the PRD is ready for the agent loop.
-   * Tell them to run `lazydev` and choose option **2** (Implement a feature) to start implementation.
+   * Tell them to choose **Implement now** in lazydev, or select the feature on the `lazydev` home screen and press enter.
    * Explain that the agent will:
      - Pick up the highest priority incomplete story
      - Break it into sub-tasks
@@ -790,7 +777,7 @@ Does this accurately capture what you want? If yes, I'll proceed with generating
 }
 ```
 
-**Note on Git commits:** The PRD skill creates the branch and writes `prd.json` + `progress.txt` — do not auto-commit them. During implementation (`lazydev` option 2), the runner commits each story — use the Jira task ID in those messages (e.g., `feat: (TASK-456) Add priority field`), not granular story IDs like `TASK-456-001`.
+**Note on Git commits:** The PRD skill only writes `prd.json` + `progress.txt` — it never runs git. During implementation, the runner commits each story — use the Jira task ID in those messages (e.g., `feat: (TASK-456) Add priority field`), not granular story IDs like `TASK-456-001`.
 
 ---
 
@@ -826,23 +813,21 @@ Before finalizing the PRD, verify:
 - [ ] Non-goals/out-of-scope items documented in notes
 - [ ] **US-REVIEW included with priority 997** (first code review, outputs to review-1.md)
 - [ ] **US-REVIEW-2 included with priority 998** (second code review, outputs to review-2.md)
-- [ ] **US-IMPLEMENT-RECS included with priority 999** (implement recommendations from both reviews)
+- [ ] **US-IMPL-RECS included with priority 999** (implement recommendations from both reviews)
 - [ ] **Each story includes note:** "Follow project rules in .cursor/rules/ folder (if it exists in this project)"
 - [ ] **If Jira task was mentioned:** `jiraTaskId` field is set and branch name includes it
 - [ ] **If Jira task was mentioned:** Story IDs use Jira prefix (e.g., `MED-523-001`, `MED-523-002`)
 - [ ] `prd.json` is valid JSON
 - [ ] `progress.txt` template created
 
-**Git Branch & Files:**
-- [ ] Working tree was clean before branch setup
-- [ ] On main/master: user was asked for branch name; branch created/checked out
-- [ ] On feature branch: stayed on current branch; `branchName` in PRD matches
+**Branch & Files:**
+- [ ] User confirmed `branchName`; it is recorded in the PRD (no branch created, no git commands run)
 - [ ] `prd.json` and `progress.txt` written and validated (user may commit when ready)
 - [ ] No auto-commit of PRD files during generation
 - [ ] All stories have `passes: false` — no implementation was done in this session
 - [ ] No application source code was created or modified
 
-**Git Commits (reminder for implementation via lazydev option 2):**
+**Git Commits (reminder for implementation):**
 - [ ] Implementation commits use Jira task ID only: `feat: (JIRA-123) Description`
 - [ ] Implementation commits do NOT use granular story IDs (JIRA-123-001)
 
